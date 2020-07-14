@@ -15,6 +15,8 @@
 
 #include <string.h>
 
+#define EXECUTE_ONE_OSG_VIEW 1
+
 auto GetCommandLineArgs(
    const int32_t argc,
    const char * const * const argv )
@@ -63,9 +65,11 @@ int32_t main(
 
    std::vector<
       std::unique_ptr< QtGLView > > gl_views;
-   
+
+#if !EXECUTE_ONE_OSG_VIEW
    for (size_t i { 0 }; i < 2; ++i)
    {
+#endif
       gl_views.emplace_back(
          std::make_unique< QtGLView >(
             "CopCapr.IVE", nullptr));
@@ -75,6 +79,7 @@ int32_t main(
          { 0.0, 0.0, 0.0 },
          { 0.0, 0.0, 1.0 });
 
+#if !EXECUTE_ONE_OSG_VIEW
       gl_views.emplace_back(
          std::make_unique< QtGLView >(
             "ElectEng.IVE", nullptr));
@@ -111,6 +116,7 @@ int32_t main(
          { 0.0, 0.0, 0.0 },
          { 0.0, 0.0, 1.0 });
    }
+#endif
 
    const int32_t exit_code =
       QApplication::exec();
