@@ -38,7 +38,7 @@
 #include <type_traits>
 
 #define USE_GL_FLUSH 0
-#define USE_GL_FINISH 0
+#define USE_GL_FINISH 1
 
 static const auto qt_meta_type_int32_t =
    qRegisterMetaType< int32_t >("int32_t");
