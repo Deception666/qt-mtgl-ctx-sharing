@@ -71,7 +71,11 @@ void QtGLView::initializeGL( )
             &ReleaseOSGView);
 
          render_thread::RegisterOSGView(
+#if _has_cxx_std_shared_ptr_weak_type
             decltype(osg_view_)::weak_type { osg_view_ });
+#else
+            std::weak_ptr< OSGView > { osg_view_ });
+#endif
       }).wait();
 
    SetupSignalsSlots();
@@ -167,7 +171,11 @@ void QtGLView::closeEvent(
    ReleaseSignalsSlots();
 
    render_thread::UnregisterOSGView(
+#if _has_cxx_std_shared_ptr_weak_type
       decltype(osg_view_)::weak_type { osg_view_ });
+#else
+      std::weak_ptr< OSGView > { osg_view_ });
+#endif
 }
 
 void QtGLView::SetupSignalsSlots( ) noexcept

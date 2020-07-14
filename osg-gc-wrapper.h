@@ -8,7 +8,11 @@
 using OSGViewerGraphicsHandle = osgViewer::GraphicsHandleWin32;
 #endif
 
+#if _has_cxx_std_any
 #include <any>
+#else
+#include "stl-ext/any"
+#endif
 
 class OSGGraphicsContextWrapper final :
    public osg::GraphicsContext,

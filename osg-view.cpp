@@ -262,8 +262,16 @@ void OSGView::Render( ) noexcept
    {
       graphics_context_->makeCurrent();
 
+#if _has_cxx_structured_bindings
       const auto [next_frame_setup, color_buffer_id] =
          SetupNextFrame();
+#else
+      const auto next_frame =
+         SetupNextFrame();
+
+      const auto next_frame_setup = next_frame.first;
+      const auto color_buffer_id = next_frame.second;
+#endif
 
       if (next_frame_setup)
       {
@@ -303,9 +311,22 @@ void OSGView::PostRender( ) noexcept
 void OSGView::OnPresentComplete(
    const GLuint color_buffer_texture_id ) noexcept
 {
+#if _has_cxx_std_map_extract
    inactive_frame_buffers_.insert(
       active_frame_buffers_.extract(
          color_buffer_texture_id));
+#else
+   const auto active_frame_buffer =
+      active_frame_buffers_.find(
+         color_buffer_texture_id);
+
+   inactive_frame_buffers_.insert({
+      active_frame_buffer->first,
+      active_frame_buffer->second});
+
+   active_frame_buffers_.erase(
+      active_frame_buffer);
+#endif
 }
 
 void OSGView::OnSetCameraLookAt(
@@ -682,9 +703,18 @@ OSGView::GetNextFrameBuffer( ) noexcept
       frame_buffer.first = frame_buffer_it->first;
       frame_buffer.second = frame_buffer_it->second;
 
+#if _has_cxx_std_map_extract
       active_frame_buffers_.insert(
          inactive_frame_buffers_.extract(
             frame_buffer_it->first));
+#else
+      active_frame_buffers_.insert({
+         frame_buffer_it->first,
+         frame_buffer_it->second});
+
+      inactive_frame_buffers_.erase(
+         frame_buffer_it);
+#endif
    }
 
    return frame_buffer;

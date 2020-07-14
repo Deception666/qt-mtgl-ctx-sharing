@@ -35,8 +35,13 @@ std::mutex osg_views_mutex_;
 
 size_t ExecuteOperation( )
 {
+#if _has_cxx_class_template_argument_deduction
    std::lock_guard lock {
       operations_mutex_ };
+#else
+   std::lock_guard< decltype(operations_mutex_) > lock {
+      operations_mutex_ };
+#endif
 
    if (!operations_.empty())
    {
@@ -50,8 +55,13 @@ size_t ExecuteOperation( )
 
 void RenderOSGViews( )
 {
+#if _has_cxx_class_template_argument_deduction
    std::lock_guard lock {
       osg_views_mutex_ };
+#else
+   std::lock_guard< decltype(osg_views_mutex_) > lock {
+      osg_views_mutex_ };
+#endif
 
    for (const auto & osg_view : osg_views_)
    {
@@ -109,8 +119,13 @@ void RenderLoop( )
 
 void Start( ) noexcept
 {
+#if _has_cxx_class_template_argument_deduction
    std::lock_guard lock {
       render_thread_mutex_ };
+#else
+   std::lock_guard< decltype(render_thread_mutex_) > lock {
+      render_thread_mutex_ };
+#endif
 
    if (render_thread_.get_id() ==
        std::thread::id { })
@@ -126,8 +141,13 @@ void Start( ) noexcept
 
 void Stop( ) noexcept
 {
+#if _has_cxx_class_template_argument_deduction
    std::lock_guard lock {
       render_thread_mutex_ };
+#else
+   std::lock_guard< decltype(render_thread_mutex_) > lock {
+      render_thread_mutex_ };
+#endif
 
    if (render_thread_.get_id() !=
        std::thread::id { })
@@ -144,8 +164,13 @@ void Stop( ) noexcept
 bool RegisterOSGView(
    std::weak_ptr< OSGView > osg_view ) noexcept
 {
+#if _has_cxx_class_template_argument_deduction
    std::lock_guard lock {
       osg_views_mutex_ };
+#else
+   std::lock_guard< decltype(osg_views_mutex_) > lock {
+      osg_views_mutex_ };
+#endif
 
    const auto registered_view =
       std::find_if(
@@ -174,8 +199,13 @@ bool RegisterOSGView(
 bool UnregisterOSGView(
    std::weak_ptr< OSGView > osg_view ) noexcept
 {
+#if _has_cxx_class_template_argument_deduction
    std::lock_guard lock {
       osg_views_mutex_ };
+#else
+   std::lock_guard< decltype(osg_views_mutex_) > lock {
+      osg_views_mutex_ };
+#endif
 
    const auto current_size =
       osg_views_.size();
@@ -199,8 +229,13 @@ bool UnregisterOSGView(
 std::future< void > AddOperation(
    std::function< void ( ) > operation ) noexcept
 {
+#if _has_cxx_class_template_argument_deduction
    std::lock_guard lock {
       operations_mutex_ };
+#else
+   std::lock_guard< decltype(operations_mutex_) > lock {
+      operations_mutex_ };
+#endif
 
    auto complete =
       std::make_shared< std::promise< void > >();

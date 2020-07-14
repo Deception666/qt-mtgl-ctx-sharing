@@ -1,0 +1,258 @@
+#ifndef _STL_EXT_ANY_
+#define _STL_EXT_ANY_
+
+#include <exception>
+#include <functional>
+#include <memory>
+#include <typeinfo>
+#include <tuple>
+#include <type_traits>
+#include <utility>
+
+namespace std
+{
+
+namespace stl_ext
+{
+
+namespace details {
+namespace any {
+
+using any_pointer_type = std::shared_ptr< void >;
+
+template < typename T >
+inline void type_delete( T * const t ) { delete t; }
+inline void noop_delete( void * const ) { }
+
+template < typename T >
+inline any_pointer_type type_construct( void * const t )
+{ 
+   using type = std::remove_reference_t< T >;
+
+   return any_pointer_type(new type(*reinterpret_cast< type * >(t)), &type_delete< type >);
+}
+template < typename T >
+inline any_pointer_type type_construct_forward( T && t )
+{
+   using type = std::remove_reference_t< T >;
+
+   return any_pointer_type(new type(std::forward< type >(t)), &type_delete< type >);
+}
+inline any_pointer_type null_construct( void * const )
+{ return any_pointer_type(nullptr, &noop_delete); }
+
+}} // details::any
+
+class any
+{
+   using pointer_type = details::any::any_pointer_type;
+   using constructor_type = std::function< pointer_type ( void * const ) >;
+   using data_type = std::tuple< pointer_type, const std::type_info *, constructor_type >;
+
+   data_type _data_type;
+
+public:
+   any( ) noexcept;
+   any( any && o ) noexcept;
+   any( const any & o ) noexcept;
+   template < typename ValueT >
+   any( ValueT && value,
+        std::enable_if_t< !std::is_same< any &, ValueT >::value > * = nullptr,
+        std::enable_if_t< !std::is_same< any &&, ValueT >::value > * = nullptr );
+   //template < typename ValueT, typename ... ArgsT >
+   //explicit any( std::in_place_type_t< ValueT >, ArgsT && ... args );
+   //template< typename ValueT, typename U, typename ... ArgsT >
+   //explicit any( std::in_place_type_t< ValueT >, std::initializer_list< U > il, ArgsT && ... args );
+
+   any & operator = ( any && o ) noexcept;
+   any & operator = ( const any & o );
+   template < typename ValueT >
+   std::enable_if_t< !std::is_same< any &, ValueT >::value && !std::is_same< any &&, ValueT >::value, any & >
+   operator = ( ValueT && o );
+
+   ~any( );
+
+   //template< typename ValueT, typename ... ArgsT >
+   //std::decay_t< ValueT > & emplace( ArgsT && ... args );
+   //template< typename ValueT, typename U, typename ... ArgsT >
+   //std::decay_t< ValueT > & emplace( std::initializer_list< U > il, ArgsT && ... args );
+   void reset( ) noexcept;
+   void swap( any & o ) noexcept;
+
+   bool has_value( ) const noexcept;
+   const std::type_info & type( ) const noexcept;
+
+private:
+   template < typename T >
+   friend inline T any_cast( any & operand );
+   template < typename T >
+   friend inline T any_cast(any && operand);
+   template < typename T >
+   friend inline T any_cast(const any & operand);
+   template < typename T >
+   friend inline T * any_cast(any * operand) noexcept;
+   template < typename T >
+   friend inline const T * any_cast(const any * operand) noexcept;
+
+};
+
+struct bad_any_cast : public std::bad_cast
+{ };
+
+inline any::any( ) noexcept :
+_data_type( pointer_type(nullptr, &details::any::noop_delete),
+            &typeid(void),
+            &details::any::null_construct )
+{
+}
+
+inline any::any( any && o ) noexcept :
+_data_type( std::move(o._data_type) )
+{
+}
+
+inline any::any( const any & o ) noexcept :
+_data_type( std::get< 2 >(o._data_type)(std::get< 0 >(o._data_type).get()),
+            std::get< 1 >(o._data_type),
+            std::get< 2 >(o._data_type) )
+{
+}
+
+template < typename ValueT >
+inline any::any( ValueT && value,
+          std::enable_if_t< !std::is_same< any &, ValueT >::value > *,
+          std::enable_if_t< !std::is_same< any &&, ValueT >::value > * ) :
+_data_type( details::any::type_construct_forward(std::forward< ValueT >(value)),
+            &typeid(ValueT),
+            &details::any::type_construct< ValueT > )
+{
+}
+
+inline any & any::operator = ( any && o ) noexcept
+{
+   if (this != &o)
+   {
+      any(std::move(o)).swap(*this);
+   }
+
+   return *this;
+}
+
+inline any & any::operator = ( const any & o )
+{
+   if (this != &o)
+   {
+      any(o).swap(*this);
+   }
+
+   return *this;
+}
+
+template < typename ValueT >
+inline std::enable_if_t< !std::is_same< any &, ValueT >::value && !std::is_same< any &&, ValueT >::value, any & >
+any::operator = ( ValueT && value )
+{
+   any(std::forward< ValueT >(value)).swap(*this);
+
+   return *this;
+}
+
+inline any::~any( )
+{
+}
+
+inline void any::reset( ) noexcept
+{
+   any().swap(*this);
+}
+
+inline void any::swap( any & o ) noexcept
+{
+   std::swap(_data_type, o._data_type);
+}
+
+inline bool any::has_value( ) const noexcept
+{
+   return std::get< 0 >(_data_type).get() != nullptr;
+}
+
+inline const std::type_info & any::type( ) const noexcept
+{
+   return *std::get< 1 >(_data_type);
+}
+
+template < typename T >
+inline T any_cast( any & operand )
+{
+   if (typeid(T) != operand.type())
+   {
+      throw stl_ext::bad_any_cast();
+   }
+
+   return *reinterpret_cast< T * >(
+      std::get< 0 >(operand._data_type).get());
+}
+
+template < typename T >
+inline T any_cast( any && operand )
+{
+   if (typeid(T) != operand.type())
+   {
+      throw stl_ext::bad_any_cast();
+   }
+
+   return T(std::move(*reinterpret_cast< T * >(
+      std::get< 0 >(operand._data_type).get())));
+}
+
+template < typename T >
+inline T any_cast( const any & operand )
+{
+   if (typeid(T) != operand.type())
+   {
+      throw stl_ext::bad_any_cast();
+   }
+
+   return *reinterpret_cast< T * >(
+      std::get< 0 >(operand._data_type).get());
+}
+
+template < typename T >
+inline T * any_cast( any * operand ) noexcept
+{
+   T * t = nullptr;
+   
+   if (typeid(T) == operand->type() &&
+       operand->has_value())
+   {
+      t = reinterpret_cast< T * >(
+         std::get< 0 >(operand->_data_type).get());
+   }
+
+   return t;
+}
+
+template < typename T >
+inline const T * any_cast( const any * operand ) noexcept
+{
+   const T * t = nullptr;
+   
+   if (typeid(T) == operand->type() &&
+       operand->has_value())
+   {
+      t = reinterpret_cast< const T * >(
+         std::get< 0 >(operand->_data_type).get());
+   }
+
+   return t;
+}
+
+} // namespace stl_ext
+
+using stl_ext::any;
+using stl_ext::bad_any_cast;
+using stl_ext::any_cast;
+
+} // namespace std
+
+#endif // _STL_EXT_ANY_

@@ -14,10 +14,20 @@
 OSGGraphicsContextWrapper::OSGGraphicsContextWrapper(
    const std::any & gl_context )
 {
+#if _has_cxx_structured_bindings
    const auto & [window, device_context, wgl_context] =
+#else
+   const auto & gl_context_data =
+#endif
       std::any_cast<
          std::tuple< HWND, HDC, HGLRC > >(
             gl_context);
+
+#if !_has_cxx_structured_bindings
+   const HWND window = std::get< 0 >(gl_context_data);
+   const HDC device_context = std::get< 1 >(gl_context_data);
+   const HGLRC wgl_context = std::get< 2 >(gl_context_data);
+#endif
 
    setHWND(window);
    setHDC(device_context);

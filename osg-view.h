@@ -12,7 +12,12 @@
 
 #include <GL/GL.h>
 
+#if _has_cxx_std_any
 #include <any>
+#else
+#include "stl-ext/any"
+#endif
+
 #include <array>
 #include <cstdint>
 #include <map>

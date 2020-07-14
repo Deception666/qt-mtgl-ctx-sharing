@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.17.2)
+cmake_minimum_required(VERSION 3.16.0)
 
 if (${CMAKE_GENERATOR} MATCHES "^Visual Studio")
    if (${CMAKE_GENERATOR_PLATFORM} STREQUAL "x64")
@@ -38,6 +38,40 @@ set(
 
 project(
    ${proj_name})
+
+set(
+   CMAKE_C_FLAGS
+   "${CMAKE_CXX_FLAGS} /Zc:__cplusplus")
+set(
+   CMAKE_CXX_FLAGS
+   "${CMAKE_CXX_FLAGS} /Zc:__cplusplus")
+
+try_compile(
+   _has_cxx_structured_bindings
+   "${CMAKE_BINARY_DIR}"
+   "${CMAKE_SOURCE_DIR}/cmake/structured-bindings.cpp"
+   CMAKE_FLAGS ${CMAKE_CXX_FLAGS})
+try_compile(
+   _has_cxx_std_map_extract
+   "${CMAKE_BINARY_DIR}"
+   "${CMAKE_SOURCE_DIR}/cmake/map-extract.cpp"
+   CMAKE_FLAGS ${CMAKE_CXX_FLAGS})
+try_compile(
+   _has_cxx_std_shared_ptr_weak_type
+   "${CMAKE_BINARY_DIR}"
+   "${CMAKE_SOURCE_DIR}/cmake/shared-ptr-weak-type.cpp"
+   CMAKE_FLAGS ${CMAKE_CXX_FLAGS})
+try_compile(
+   _has_cxx_class_template_argument_deduction
+   "${CMAKE_BINARY_DIR}"
+   "${CMAKE_SOURCE_DIR}/cmake/class-template-argument-deduction.cpp"
+   CMAKE_FLAGS ${CMAKE_CXX_FLAGS})
+
+include(CheckIncludeFileCXX)
+
+check_include_file_cxx(
+   any
+   _has_cxx_std_any)
 
 add_executable(
    ${proj_name}
@@ -88,3 +122,12 @@ target_link_libraries(
    ${proj_name}
    PRIVATE
    OpenGL::GL)
+
+target_compile_definitions(
+   ${proj_name}
+   PRIVATE
+   "_has_cxx_std_any=$<IF:$<BOOL:${_has_cxx_std_any}>,1,0>"
+   "_has_cxx_structured_bindings=$<IF:$<BOOL:${_has_cxx_structured_bindings}>,1,0>"
+   "_has_cxx_std_map_extract=$<IF:$<BOOL:${_has_cxx_std_map_extract}>,1,0>"
+   "_has_cxx_std_shared_ptr_weak_type=$<IF:$<BOOL:${_has_cxx_std_shared_ptr_weak_type}>,1,0>"
+   "_has_cxx_class_template_argument_deduction=$<IF:$<BOOL:${_has_cxx_class_template_argument_deduction}>,1,0>")
