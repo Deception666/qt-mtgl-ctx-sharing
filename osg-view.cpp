@@ -1,4 +1,5 @@
 #include "osg-view.h"
+#include "gl-fence-sync.h"
 #include "osg-gc-wrapper.h"
 
 #if _WIN32
@@ -36,7 +37,6 @@
 #include <cassert>
 #include <chrono>
 #include <iostream>
-#include <memory>
 #include <type_traits>
 
 #define USE_GL_FLUSH 0
@@ -322,7 +322,20 @@ void OSGView::Render( ) noexcept
          glFinish();
 #endif
 
-         emit Present(color_buffer_id);
+         gl::FenceSync fence_sync;
+
+         if (fence_sync.Valid() &&
+             !fence_sync.IsSignaled())
+         {
+            active_fence_syncs_.emplace_back(
+               color_buffer_id,
+               std::make_unique< gl::FenceSync >(
+                  std::move(fence_sync)));
+         }
+         else
+         {
+            emit Present(color_buffer_id);
+         }
       }
 
       graphics_context_->releaseContext();
@@ -657,6 +670,8 @@ std::pair< bool, GLuint > OSGView::SetupNextFrame( ) noexcept
 {
    std::pair< bool, GLuint > setup { false, 0 };
 
+   ProcessWaitingFenceSyncs();
+
    const auto frame_buffer =
       GetNextFrameBuffer();
 
@@ -760,6 +775,31 @@ OSGView::GetNextFrameBuffer( ) noexcept
    }
 
    return frame_buffer;
+}
+
+void OSGView::ProcessWaitingFenceSyncs( ) noexcept
+{
+   const auto removed =
+      std::remove_if(
+         active_fence_syncs_.begin(),
+         active_fence_syncs_.end(),
+         [ this ] ( const auto & fence_sync )
+         {
+            bool signaled {
+               fence_sync.second->IsSignaled() };
+
+            if (signaled)
+            {
+               emit
+                  Present(fence_sync.first);
+            }
+
+            return signaled;
+         });
+
+   active_fence_syncs_.erase(
+      removed,
+      active_fence_syncs_.end());
 }
 
 void OSGView::OnResize(

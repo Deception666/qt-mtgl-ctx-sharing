@@ -21,8 +21,10 @@
 #include <array>
 #include <cstdint>
 #include <map>
+#include <memory>
 #include <string>
 #include <utility>
+#include <vector>
 
 namespace osg
 {
@@ -34,6 +36,11 @@ class Texture2D;
 namespace osgUtil
 {
 class SceneView;
+}
+
+namespace gl
+{
+class FenceSync;
 }
 
 class OSGGraphicsContextWrapper;
@@ -89,6 +96,8 @@ private:
    std::pair< GLuint, osg::ref_ptr< osg::FrameBufferObject > >
    GetNextFrameBuffer( ) noexcept;
 
+   void ProcessWaitingFenceSyncs( ) noexcept;
+
    uint32_t width_;
    uint32_t height_;
 
@@ -96,6 +105,9 @@ private:
 
    std::map< GLuint, osg::ref_ptr< osg::FrameBufferObject > > active_frame_buffers_;
    std::map< GLuint, osg::ref_ptr< osg::FrameBufferObject > > inactive_frame_buffers_;
+
+   std::vector< std::pair< GLuint, std::unique_ptr< gl::FenceSync > > >
+      active_fence_syncs_;
 
    const QObject & parent_;
    const osg::ref_ptr< OSGGraphicsContextWrapper > parent_gc_wrapper_;

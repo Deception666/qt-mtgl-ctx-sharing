@@ -75,6 +75,8 @@ check_include_file_cxx(
 
 add_executable(
    ${proj_name}
+   gl-fence-sync.cpp
+   gl-fence-sync.h
    main.cpp
    osg-gc-wrapper.cpp
    osg-gc-wrapper.h
