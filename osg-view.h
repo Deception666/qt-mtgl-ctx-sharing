@@ -1,6 +1,8 @@
 #ifndef _OSG_VIEW_H_
 #define _OSG_VIEW_H_
 
+#include "color-buffer-data.h"
+
 #include <QtCore/QObject>
 
 #include <osg/ref_ptr>
@@ -16,6 +18,7 @@
 #include <array>
 #include <cstdint>
 #include <map>
+#include <memory>
 #include <string>
 #include <utility>
 
@@ -32,6 +35,7 @@ class SceneView;
 }
 
 class OSGGraphicsContextWrapper;
+struct ColorBufferData;
 
 class OSGView :
    public QObject
@@ -53,7 +57,7 @@ public:
 
 signals:
    void Present(
-      const GLuint color_buffer_texture_id );
+      const std::shared_ptr< ColorBufferData > & color_buffer );
 
 protected:
 
@@ -62,7 +66,7 @@ private slots:
       const int32_t width,
       const int32_t height ) noexcept;
    void OnPresentComplete(
-      const GLuint color_buffer_texture_id ) noexcept;
+      const std::shared_ptr< ColorBufferData > & color_buffer ) noexcept;
    void OnSetCameraLookAt(
       const std::array< double, 3 > & eye,
       const std::array< double, 3 > & center,

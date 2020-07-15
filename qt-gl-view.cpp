@@ -31,7 +31,9 @@ QtGLView::QtGLView(
    std::string model,
    QWidget * const parent ) noexcept :
 QOpenGLWidget { parent },
+color_buffer_data_updated_ { false },
 color_buffer_texture_id_ { 0 },
+color_buffer_data_ { nullptr },
 osg_view_ { nullptr },
 model_ { std::move(model) }
 {
@@ -95,8 +97,60 @@ void QtGLView::paintGL( )
 {
    QOpenGLWidget::paintGL();
 
-   if (color_buffer_texture_id_)
+   if (color_buffer_data_)
    {
+      if (color_buffer_data_updated_)
+      {
+         if (!color_buffer_texture_id_)
+         {
+            glGenTextures(
+               1,
+               &color_buffer_texture_id_);
+
+            glBindTexture(
+               GL_TEXTURE_2D,
+               color_buffer_texture_id_);
+
+            glTexParameteri(
+               GL_TEXTURE_2D,
+               GL_TEXTURE_MIN_FILTER,
+               GL_NEAREST);
+            glTexParameteri(
+               GL_TEXTURE_2D,
+               GL_TEXTURE_MAG_FILTER,
+               GL_NEAREST);
+            glTexParameteri(
+               GL_TEXTURE_2D,
+               GL_TEXTURE_WRAP_S,
+               GL_CLAMP_TO_EDGE);
+            glTexParameteri(
+               GL_TEXTURE_2D,
+               GL_TEXTURE_WRAP_T,
+               GL_CLAMP_TO_EDGE);
+         }
+
+         glBindTexture(
+            GL_TEXTURE_2D,
+            color_buffer_texture_id_);
+
+         glTexImage2D(
+            GL_TEXTURE_2D,
+            0,
+            GL_RGBA8,
+            color_buffer_data_->width_,
+            color_buffer_data_->height_,
+            0,
+            GL_RGBA,
+            GL_UNSIGNED_BYTE,
+            color_buffer_data_->data_.data());
+
+         glBindTexture(
+            GL_TEXTURE_2D,
+            0);
+
+         color_buffer_data_updated_ = false;
+      }
+
       glMatrixMode(GL_PROJECTION);
       glLoadIdentity();
 
@@ -195,17 +249,19 @@ void QtGLView::ReleaseSignalsSlots( ) noexcept
 }
 
 void QtGLView::OnPresent(
-   const GLuint color_buffer_texture_id ) noexcept
+   const std::shared_ptr< ColorBufferData > & color_buffer ) noexcept
 {
-   if (color_buffer_texture_id_)
+   if (color_buffer_data_)
    {
       emit
          PresentComplete(
-            color_buffer_texture_id_);
+            color_buffer_data_);
    }
 
-   color_buffer_texture_id_ =
-      color_buffer_texture_id;
+   color_buffer_data_ =
+      color_buffer;
+
+   color_buffer_data_updated_ = true;
 
    update();
 }

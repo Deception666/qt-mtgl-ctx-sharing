@@ -41,6 +41,7 @@ project(
 
 add_executable(
    ${proj_name}
+   color-buffer-data.h
    main.cpp
    osg-gc-wrapper.cpp
    osg-gc-wrapper.h

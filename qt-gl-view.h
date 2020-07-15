@@ -21,6 +21,8 @@
 class OSGView;
 class QCloseEvent;
 
+struct ColorBufferData;
+
 class QtGLView final :
    public QOpenGLWidget
 {
@@ -36,7 +38,7 @@ signals:
       const int32_t width,
       const int32_t height );
    void PresentComplete(
-      const GLuint color_buffer_texture_id );
+      const std::shared_ptr< ColorBufferData > & color_buffer );
    void SetCameraLookAt(
       const std::array< double, 3 > & eye,
       const std::array< double, 3 > & center,
@@ -54,13 +56,15 @@ protected:
 
 private slots:
    void OnPresent(
-      const GLuint color_buffer_texture_id ) noexcept;
+      const std::shared_ptr< ColorBufferData > & color_buffer ) noexcept;
 
 private:
    void SetupSignalsSlots( ) noexcept;
    void ReleaseSignalsSlots( ) noexcept;
 
+   bool color_buffer_data_updated_;
    GLuint color_buffer_texture_id_;
+   std::shared_ptr< ColorBufferData > color_buffer_data_;
 
    std::shared_ptr< OSGView > osg_view_;
 

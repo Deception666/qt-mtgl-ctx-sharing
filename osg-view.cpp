@@ -16,6 +16,7 @@
 #include <osg/DisplaySettings>
 #include <osg/FrameStamp>
 #include <osg/FrameBufferObject>
+#include <osg/GLExtensions>
 #include <osg/GraphicsContext>
 #include <osg/Matrix>
 #include <osg/MatrixTransform>
@@ -34,11 +35,11 @@
 #include <cassert>
 #include <chrono>
 #include <iostream>
-#include <memory>
 #include <type_traits>
 
 #define USE_GL_FLUSH 0
 #define USE_GL_FINISH 0
+#define SHARE_WITH_PARENT_GC_WRAPPER 0
 
 static const auto qt_meta_type_int32_t =
    qRegisterMetaType< int32_t >("int32_t");
@@ -47,6 +48,9 @@ static const auto qt_meta_type_GLuint =
 static const auto qt_meta_type_std_array_doulbe_3 =
    qRegisterMetaType< std::array< double, 3 > >(
       "std::array< double, 3 >");
+static const auto qt_meta_type_color_buffer_data_ptr =
+   qRegisterMetaType< std::shared_ptr< ColorBufferData > >(
+      "std::shared_ptr< ColorBufferData >");
 
 #if _WIN32
 static std::unique_ptr<
@@ -220,6 +224,7 @@ graphics_context_ {
 {
    assert(graphics_context_.get());
 
+#if SHARE_WITH_PARENT_GC_WRAPPER
 #if _WIN32
    const auto shared =
       wglShareLists(
@@ -231,6 +236,7 @@ graphics_context_ {
 #else
 #error "Define for this platform!"
 #endif // _WIN32
+#endif // SHARE_WITH_PARENT_GC_WRAPPER
 
    SetupOSG(model);
    SetupFrameBuffer();
@@ -288,8 +294,45 @@ void OSGView::Render( ) noexcept
 #if USE_GL_FINISH
          glFinish();
 #endif
+         // perform a very slow read of the data
+         const auto color_buffer_data =
+            std::make_shared< ColorBufferData >();
 
-         emit Present(color_buffer_id);
+         color_buffer_data->id_ = color_buffer_id;
+         color_buffer_data->width_ = width_;
+         color_buffer_data->height_ = height_;
+         color_buffer_data->data_.resize(width_ * height_);
+
+         const auto frame_buffer =
+            active_frame_buffers_.find(
+               color_buffer_id);
+
+         const auto * const gl_extensions =
+            graphics_context_->getState()->get< osg::GLExtensions >();
+
+         gl_extensions->glBindFramebuffer(
+            GL_FRAMEBUFFER_EXT,
+            frame_buffer->second->getHandle(
+               graphics_context_->getState()->getContextID()));
+
+         glReadBuffer(
+            GL_COLOR_ATTACHMENT0_EXT);
+
+         glReadPixels(
+            0, 0,
+            width_, height_,
+            GL_RGBA,
+            GL_UNSIGNED_BYTE,
+            color_buffer_data->data_.data());
+
+         gl_extensions->glBindFramebuffer(
+            GL_FRAMEBUFFER_EXT,
+            0);
+
+         glReadBuffer(
+            GL_BACK);
+
+         emit Present(color_buffer_data);
       }
 
       graphics_context_->releaseContext();
@@ -301,11 +344,11 @@ void OSGView::PostRender( ) noexcept
 }
 
 void OSGView::OnPresentComplete(
-   const GLuint color_buffer_texture_id ) noexcept
+   const std::shared_ptr< ColorBufferData > & color_buffer ) noexcept
 {
    inactive_frame_buffers_.insert(
       active_frame_buffers_.extract(
-         color_buffer_texture_id));
+         color_buffer->id_));
 }
 
 void OSGView::OnSetCameraLookAt(
@@ -504,9 +547,11 @@ void OSGView::SetupSignalsSlots( ) noexcept
       SLOT(OnResize(const int32_t, const int32_t)));
    QObject::connect(
       &parent_,
-      SIGNAL(PresentComplete(const GLuint)),
+      SIGNAL(PresentComplete(
+         const std::shared_ptr< ColorBufferData > &)),
       this,
-      SLOT(OnPresentComplete(const GLuint)));
+      SLOT(OnPresentComplete(
+         const std::shared_ptr< ColorBufferData > &)));
    QObject::connect(
       &parent_,
       SIGNAL(SetCameraLookAt(
@@ -529,9 +574,11 @@ void OSGView::ReleaseSignalsSlots( ) noexcept
       SLOT(OnResize(const int32_t, const int32_t)));
    QObject::disconnect(
       &parent_,
-      SIGNAL(PresentComplete(const GLuint)),
+      SIGNAL(PresentComplete(
+         const std::shared_ptr< ColorBufferData > &)),
       this,
-      SLOT(OnPresentComplete(const GLuint)));
+      SLOT(OnPresentComplete(
+         const std::shared_ptr< ColorBufferData > &)));
    QObject::disconnect(
       &parent_,
       SIGNAL(SetCameraLookAt(
