@@ -82,6 +82,9 @@ private:
    osg::ref_ptr< osg::Texture2D >
    SetupDepthBuffer( ) noexcept;
 
+   void UpdateText(
+      const GLuint color_buffer_texture_id ) const noexcept;
+
    std::pair< bool, GLuint > SetupNextFrame( ) noexcept;
    std::pair< GLuint, osg::ref_ptr< osg::FrameBufferObject > >
    GetNextFrameBuffer( ) noexcept;

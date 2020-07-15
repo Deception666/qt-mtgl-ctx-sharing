@@ -42,7 +42,7 @@ OSGGraphicsContextWrapper::OSGGraphicsContextWrapper(
 
 bool OSGGraphicsContextWrapper::valid( ) const
 {
-   return getHDC() && getWGLContext();
+   return getWGLContext();
 }
 
 bool OSGGraphicsContextWrapper::realizeImplementation( )

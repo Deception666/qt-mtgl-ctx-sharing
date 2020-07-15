@@ -14,7 +14,8 @@
 #include <thread>
 #include <utility>
 
-extern void InitHiddenGLContext( ) noexcept;
+extern void InitHiddenGLContext(
+   const std::any & hidden_context ) noexcept;
 extern void ReleaseHiddenGLContext( ) noexcept;
 
 namespace render_thread
@@ -117,7 +118,8 @@ void RenderLoop( )
    while (ExecuteOperation());
 }
 
-void Start( ) noexcept
+void Start(
+   std::any hidden_gl_context ) noexcept
 {
 #if _has_cxx_class_template_argument_deduction
    std::lock_guard lock {
@@ -135,7 +137,8 @@ void Start( ) noexcept
             &RenderLoop };
 
       AddOperation(
-         &InitHiddenGLContext).wait();
+         &InitHiddenGLContext,
+         std::move(hidden_gl_context)).wait();
    }
 }
 
@@ -230,7 +233,7 @@ std::future< void > AddOperation(
    std::function< void ( ) > operation ) noexcept
 {
 #if _has_cxx_class_template_argument_deduction
-   std::lock_guard lock {
+    std::lock_guard lock {
       operations_mutex_ };
 #else
    std::lock_guard< decltype(operations_mutex_) > lock {
@@ -248,6 +251,37 @@ std::future< void > AddOperation(
         operation = std::move(operation) ] ( ) mutable
       {
          operation();
+
+         complete->set_value();
+      });
+
+   return completed;
+}
+
+std::future< void > AddOperation(
+   std::function< void ( const std::any & ) > operation,
+   std::any arguments ) noexcept
+{
+#if _has_cxx_class_template_argument_deduction
+    std::lock_guard lock {
+      operations_mutex_ };
+#else
+   std::lock_guard< decltype(operations_mutex_) > lock {
+      operations_mutex_ };
+#endif
+
+   auto complete =
+      std::make_shared< std::promise< void > >();
+
+   auto completed =
+      complete->get_future();
+
+   operations_.push_back(
+      [ complete = std::move(complete),
+        operation = std::move(operation),
+        arguments = std::move(arguments) ] ( ) mutable
+      {
+         operation(arguments);
 
          complete->set_value();
       });

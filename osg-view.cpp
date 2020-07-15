@@ -10,6 +10,8 @@
 #include <osgUtil/SceneView>
 #include <osgUtil/UpdateVisitor>
 
+#include <osgText/Text>
+
 #include <osgDB/ReadFile>
 
 #include <osg/Camera>
@@ -39,6 +41,7 @@
 
 #define USE_GL_FLUSH 0
 #define USE_GL_FINISH 0
+#define SHARE_WITH_PARENT_GC_CONTEXT 0
 
 static const auto qt_meta_type_int32_t =
    qRegisterMetaType< int32_t >("int32_t");
@@ -177,15 +180,32 @@ CreateGraphicsContext(
 static osg::ref_ptr< osg::GraphicsContext >
    hidden_graphics_context_;
 
-void InitHiddenGLContext( ) noexcept
+void InitHiddenGLContext(
+   const std::any & hidden_context ) noexcept
 {
-   LoadGraphicsSubsystem();
+   if (!hidden_graphics_context_)
+   {
+      LoadGraphicsSubsystem();
 
-   hidden_graphics_context_ =
-      CreateGraphicsContext(
-         1, 1,
-         "hidden graphics context",
-         nullptr);
+      if (!hidden_context.has_value())
+      {
+         hidden_graphics_context_ =
+            CreateGraphicsContext(
+               1, 1,
+               "hidden graphics context",
+               nullptr);
+      }
+      else
+      {
+#if _WIN32
+         hidden_graphics_context_ =
+            new OSGGraphicsContextWrapper {
+               hidden_context };
+#else
+#error "Define for this platform!"
+#endif
+      }
+   }
 }
 
 void ReleaseHiddenGLContext( ) noexcept
@@ -220,6 +240,7 @@ graphics_context_ {
 {
    assert(graphics_context_.get());
 
+#if SHARE_WITH_PARENT_GC_CONTEXT
 #if _WIN32
    const auto shared =
       wglShareLists(
@@ -231,6 +252,7 @@ graphics_context_ {
 #else
 #error "Define for this platform!"
 #endif // _WIN32
+#endif // SHARE_WITH_PARENT_GC_CONTEXT
 
    SetupOSG(model);
    SetupFrameBuffer();
@@ -284,6 +306,9 @@ void OSGView::Render( ) noexcept
             std::chrono::duration_cast< std::chrono::milliseconds >(
                std::chrono::steady_clock::now().time_since_epoch()).count() /
             1000.0);
+
+         UpdateText(
+            color_buffer_id);
 
          osg_scene_view_->update();
          osg_scene_view_->cull();
@@ -366,6 +391,9 @@ void OSGView::SetupOSG(
 
    mtransform->addChild(
       model_node);
+
+   mtransform->addChild(
+      new osgText::Text);
 
    osg_scene_view_->setSceneData(
       mtransform);
@@ -609,6 +637,20 @@ osg::ref_ptr< osg::Texture2D > OSGView::SetupDepthBuffer( ) noexcept
       << std::endl;
 
    return depth_buffer;
+}
+
+void OSGView::UpdateText(
+   const GLuint color_buffer_texture_id ) const noexcept
+{
+   const auto scene_data =
+      osg_scene_view_->getSceneData();
+
+   const auto text_node =
+      scene_data->asTransform()->getChild(1);
+
+   static_cast< osgText::Text * >(
+      text_node)->setText(
+         std::to_string(color_buffer_texture_id));
 }
 
 std::pair< bool, GLuint > OSGView::SetupNextFrame( ) noexcept

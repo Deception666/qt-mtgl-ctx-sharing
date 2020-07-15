@@ -1,6 +1,12 @@
 #ifndef _RENDER_THREAD_H_
 #define _RENDER_THREAD_H_
 
+#if _has_cxx_std_any
+#include <any>
+#else
+#include "stl-ext/any"
+#endif
+
 #include <functional>
 #include <future>
 #include <memory>
@@ -10,7 +16,8 @@ class OSGView;
 namespace render_thread
 {
 
-void Start( ) noexcept;
+void Start(
+   std::any hidden_gl_context ) noexcept;
 void Stop( ) noexcept;
 
 bool RegisterOSGView(
@@ -20,6 +27,9 @@ bool UnregisterOSGView(
 
 std::future< void > AddOperation(
    std::function< void ( ) > operation ) noexcept;
+std::future< void > AddOperation(
+   std::function< void ( const std::any & ) > operation,
+   std::any arguments ) noexcept;
 
 } // namespace rt
 

@@ -1,21 +1,35 @@
 #include "qt-gl-view.h"
 #include "render-thread.h"
 
+#if _WIN32
+#include <QtPlatformHeaders/QWGLNativeContext>
+#endif // _WIN32
+
 #include <QtWidgets/QApplication>
 
+#include <QtGui/QOpenGLContext>
+
 #include <QtCore/QCoreApplication>
+#include <QtCore/QVariant>
 
 #include <Qt>
+
+#if _has_cxx_std_any
+#include <any>
+#else
+#include "stl-ext/any"
+#endif
 
 #include <cstdint>
 #include <cstdlib>
 #include <memory>
+#include <tuple>
 #include <utility>
 #include <vector>
 
 #include <string.h>
 
-#define DISPLAY_ONLY_ONE_VIEW 1
+#define DISPLAY_ONLY_ONE_VIEW 0
 
 auto GetCommandLineArgs(
    const int32_t argc,
@@ -47,6 +61,34 @@ auto GetCommandLineArgs(
          std::move(arg_strs));
 }
 
+std::any SetupHiddenGLContextFromGlobalQtGLContext( ) noexcept
+{
+   std::any hidden_gl_context;
+
+   const auto qt_gl_context =
+      QOpenGLContext::globalShareContext();
+
+   if (qt_gl_context)
+   {
+      const auto native_handle =
+         qt_gl_context->nativeHandle();
+
+#if _WIN32
+      hidden_gl_context.swap(
+         std::any {
+            std::make_tuple(
+               HWND { },
+               HDC { },
+               qvariant_cast< QWGLNativeContext >(
+                  native_handle).context()) });
+#else
+#error "Define for your platform!"
+#endif
+   }
+
+   return hidden_gl_context;
+}
+
 int32_t main(
    const int32_t argc,
    const char * const (& argv)[] )
@@ -61,7 +103,8 @@ int32_t main(
    QApplication application {
       _argc, _argv.first.data() };
 
-   render_thread::Start();
+   render_thread::Start(
+      SetupHiddenGLContextFromGlobalQtGLContext());
 
    std::vector<
       std::unique_ptr< QtGLView > > gl_views;

@@ -104,7 +104,8 @@ find_package(
    COMPONENTS
    osgDB
    osgViewer
-   osgUtil)
+   osgUtil
+   osgText)
 
 target_include_directories(
    ${proj_name}
