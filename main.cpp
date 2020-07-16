@@ -15,7 +15,7 @@
 
 #include <string.h>
 
-#define DISPLAY_ONLY_ONE_VIEW 0
+#define DISPLAY_ONLY_ONE_VIEW 1
 
 auto GetCommandLineArgs(
    const int32_t argc,

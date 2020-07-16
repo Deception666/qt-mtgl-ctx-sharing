@@ -39,9 +39,20 @@ set(
 project(
    ${proj_name})
 
+set(
+   CMAKE_C_FLAGS
+   "${CMAKE_C_FLAGS} /MP")
+set(
+   CMAKE_CXX_FLAGS
+   "${CMAKE_CXX_FLAGS} /MP")
+
 add_executable(
    ${proj_name}
    color-buffer-data.h
+   gl-fence-sync.cpp
+   gl-fence-sync.h
+   gl-pixel-buffer-object.cpp
+   gl-pixel-buffer-object.h
    main.cpp
    osg-gc-wrapper.cpp
    osg-gc-wrapper.h

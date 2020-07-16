@@ -1,4 +1,5 @@
 #include "osg-view.h"
+#include "gl-pixel-buffer-object.h"
 #include "osg-gc-wrapper.h"
 
 #if _WIN32
@@ -318,19 +319,37 @@ void OSGView::Render( ) noexcept
          glReadBuffer(
             GL_COLOR_ATTACHMENT0_EXT);
 
+         gl::PixelBufferObject pbo;
+
+         pbo.Bind(
+            gl::PixelBufferObject::Operation::PACK);
+         pbo.SetSize(
+            width_ * height_ * 4);
+         
          glReadPixels(
             0, 0,
             width_, height_,
             GL_RGBA,
             GL_UNSIGNED_BYTE,
-            color_buffer_data->data_.data());
-
+            nullptr);
+         
+         const auto data =
+            pbo.ReadData(
+               0,
+               width_ * height_ * 4);
+         
          gl_extensions->glBindFramebuffer(
             GL_FRAMEBUFFER_EXT,
             0);
 
          glReadBuffer(
             GL_BACK);
+
+         std::copy(
+            data.cbegin(),
+            data.cend(),
+            reinterpret_cast< uint8_t * >(
+               color_buffer_data->data_.data()));
 
          emit Present(color_buffer_data);
       }
