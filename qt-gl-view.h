@@ -1,6 +1,8 @@
 #ifndef _QT_GL_VIEW_H_
 #define _QT_GL_VIEW_H_
 
+#include "gl-pixel-buffer-object.h"
+
 #include <QtWidgets/QOpenGLWidget>
 #include <QtWidgets/QWidget>
 
@@ -62,9 +64,17 @@ private:
    void SetupSignalsSlots( ) noexcept;
    void ReleaseSignalsSlots( ) noexcept;
 
-   bool color_buffer_data_updated_;
-   GLuint color_buffer_texture_id_;
-   std::shared_ptr< ColorBufferData > color_buffer_data_;
+   struct Frame
+   {
+      GLuint color_buffer_texture_id_;
+      gl::PixelBufferObject pbo_;
+   };
+
+   Frame * GetFrame(
+      const uint32_t id );
+
+   const Frame * current_frame_;
+   std::map< uint32_t, Frame > active_frames_;
 
    std::shared_ptr< OSGView > osg_view_;
 

@@ -360,7 +360,7 @@ void OSGView::Render( ) noexcept
             color_buffer_data->data_ =
                pbo->ReadData< uint32_t >(
                   0,
-                  width_ * height_ * 4);
+                  width_ * height_);
 
             emit Present(color_buffer_data);
          }
@@ -849,8 +849,7 @@ void OSGView::ProcessWaitingFenceSyncs( ) noexcept
                   pbo->ReadData< uint32_t >(
                      0,
                      color_buffer_data->width_ *
-                     color_buffer_data->height_ *
-                     sizeof(uint32_t));
+                     color_buffer_data->height_);
 
                pbo->Bind(
                   gl::PixelBufferObject::Operation::NONE);

@@ -144,6 +144,7 @@ static GLenum TranslateOpToGL(
 
 PixelBufferObject::PixelBufferObject( ) noexcept :
 current_operation_ { Operation::NONE },
+buffer_size_bytes_ { 0 },
 pixel_buffer_object_ { CreatePixelBufferObject() }
 {
 }
@@ -159,8 +160,11 @@ PixelBufferObject::~PixelBufferObject( ) noexcept
 PixelBufferObject::PixelBufferObject(
    PixelBufferObject && o ) noexcept :
 current_operation_ { o.current_operation_ },
+buffer_size_bytes_ { o.buffer_size_bytes_ },
 pixel_buffer_object_ { o.pixel_buffer_object_ }
 {
+   o.current_operation_ = Operation::NONE;
+   o.buffer_size_bytes_ = 0;
    const_cast< uint32_t & >(
       o.pixel_buffer_object_) = 0;
 }
@@ -173,6 +177,9 @@ PixelBufferObject & PixelBufferObject::operator = (
       std::swap(
          current_operation_,
          o.current_operation_);
+      std::swap(
+         buffer_size_bytes_,
+         o.buffer_size_bytes_);
       std::swap(
          const_cast< uint32_t & >(pixel_buffer_object_),
          const_cast< uint32_t & >(o.pixel_buffer_object_));
@@ -286,6 +293,51 @@ bool PixelBufferObject::ReadData(
    }
 
    return read;
+}
+
+bool PixelBufferObject::WriteData(
+   const size_t offset,
+   const size_t size_in_bytes,
+   void * const data ) const noexcept
+{
+   bool wrote { false };
+
+   if (size_in_bytes && data && IsBound())
+   {
+      const auto target =
+         TranslateOpToGL(
+            current_operation_);
+
+      GLint buffer_size { 0 };
+      ext::glGetBufferParameteriv(
+         target,
+         GL_BUFFER_SIZE,
+         &buffer_size);
+
+      if (offset + size_in_bytes <= buffer_size)
+      {
+         // use std::unique_ptr in the future...
+         auto * const buffer =
+            ext::glMapBuffer(
+               target,
+               GL_READ_ONLY);
+
+         if (buffer)
+         {
+            std::copy(
+               reinterpret_cast< const uint8_t * >(data) + offset,
+               reinterpret_cast< const uint8_t * >(data) + offset + size_in_bytes,
+               reinterpret_cast< uint8_t * >(buffer));
+
+            ext::glUnmapBuffer(
+               target);
+
+            wrote = true;
+         }
+      }
+   }
+
+   return wrote;
 }
 
 } // namespace gl

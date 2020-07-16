@@ -32,9 +32,7 @@ QtGLView::QtGLView(
    std::string model,
    QWidget * const parent ) noexcept :
 QOpenGLWidget { parent },
-color_buffer_data_updated_ { false },
-color_buffer_texture_id_ { 0 },
-color_buffer_data_ { nullptr },
+current_frame_ { nullptr },
 osg_view_ { nullptr },
 model_ { std::move(model) }
 {
@@ -98,60 +96,8 @@ void QtGLView::paintGL( )
 {
    QOpenGLWidget::paintGL();
 
-   if (color_buffer_data_)
+   if (current_frame_)
    {
-      if (color_buffer_data_updated_)
-      {
-         if (!color_buffer_texture_id_)
-         {
-            glGenTextures(
-               1,
-               &color_buffer_texture_id_);
-
-            glBindTexture(
-               GL_TEXTURE_2D,
-               color_buffer_texture_id_);
-
-            glTexParameteri(
-               GL_TEXTURE_2D,
-               GL_TEXTURE_MIN_FILTER,
-               GL_NEAREST);
-            glTexParameteri(
-               GL_TEXTURE_2D,
-               GL_TEXTURE_MAG_FILTER,
-               GL_NEAREST);
-            glTexParameteri(
-               GL_TEXTURE_2D,
-               GL_TEXTURE_WRAP_S,
-               GL_CLAMP_TO_EDGE);
-            glTexParameteri(
-               GL_TEXTURE_2D,
-               GL_TEXTURE_WRAP_T,
-               GL_CLAMP_TO_EDGE);
-         }
-
-         glBindTexture(
-            GL_TEXTURE_2D,
-            color_buffer_texture_id_);
-
-         glTexImage2D(
-            GL_TEXTURE_2D,
-            0,
-            GL_RGBA8,
-            color_buffer_data_->width_,
-            color_buffer_data_->height_,
-            0,
-            GL_RGBA,
-            GL_UNSIGNED_BYTE,
-            color_buffer_data_->data_.data());
-
-         glBindTexture(
-            GL_TEXTURE_2D,
-            0);
-
-         color_buffer_data_updated_ = false;
-      }
-
       glMatrixMode(GL_PROJECTION);
       glLoadIdentity();
 
@@ -166,7 +112,7 @@ void QtGLView::paintGL( )
 
       glBindTexture(
          GL_TEXTURE_2D,
-         color_buffer_texture_id_);
+         current_frame_->color_buffer_texture_id_);
 
       const float tex_coords[] {
          0.0f, 1.0f,
@@ -249,20 +195,112 @@ void QtGLView::ReleaseSignalsSlots( ) noexcept
    }
 }
 
+QtGLView::Frame * QtGLView::GetFrame(
+   const uint32_t id )
+{
+   Frame * frame { nullptr };
+
+   auto frame_it =
+      active_frames_.find(id);
+
+   if (frame_it == active_frames_.cend())
+   {
+      uint32_t texture_id { 0 };
+
+      glGenTextures(
+         1,
+         &texture_id);
+
+      glBindTexture(
+         GL_TEXTURE_2D,
+         texture_id);
+
+      glTexParameteri(
+         GL_TEXTURE_2D,
+         GL_TEXTURE_MIN_FILTER,
+         GL_NEAREST);
+      glTexParameteri(
+         GL_TEXTURE_2D,
+         GL_TEXTURE_MAG_FILTER,
+         GL_NEAREST);
+      glTexParameteri(
+         GL_TEXTURE_2D,
+         GL_TEXTURE_WRAP_S,
+         GL_CLAMP_TO_EDGE);
+      glTexParameteri(
+         GL_TEXTURE_2D,
+         GL_TEXTURE_WRAP_T,
+         GL_CLAMP_TO_EDGE);
+
+      glBindTexture(
+         GL_TEXTURE_2D,
+         0);
+
+      frame_it =
+         active_frames_.emplace(
+            id,
+            Frame { texture_id, { } }).first;
+   }
+
+   frame = &frame_it->second;
+
+   return frame;
+}
+
 void QtGLView::OnPresent(
    const std::shared_ptr< ColorBufferData > & color_buffer ) noexcept
 {
-   if (color_buffer_data_)
+   makeCurrent();
+
+   const auto frame =
+      GetFrame(color_buffer->id_);
+
+   frame->pbo_.Bind(
+      gl::PixelBufferObject::Operation::UNPACK);
+
+   const uint32_t data_size_in_bytes =
+      color_buffer->data_.size() * sizeof(uint32_t);
+   
+   if (data_size_in_bytes > frame->pbo_.GetSize())
    {
-      emit
-         PresentComplete(
-            color_buffer_data_);
+      frame->pbo_.SetSize(
+         data_size_in_bytes);
    }
 
-   color_buffer_data_ =
-      color_buffer;
+   frame->pbo_.WriteData(
+      0,
+      data_size_in_bytes,
+      color_buffer->data_.data());
 
-   color_buffer_data_updated_ = true;
+   glBindTexture(
+      GL_TEXTURE_2D,
+      frame->color_buffer_texture_id_);
+
+   glTexImage2D(
+      GL_TEXTURE_2D,
+      0,
+      GL_RGBA8,
+      color_buffer->width_,
+      color_buffer->height_,
+      0,
+      GL_RGBA,
+      GL_UNSIGNED_BYTE,
+      nullptr);
+
+   glBindTexture(
+      GL_TEXTURE_2D,
+      0);
+
+   frame->pbo_.Bind(
+      gl::PixelBufferObject::Operation::NONE);
+
+   doneCurrent();
+
+   current_frame_ = frame;
 
    update();
+
+   emit
+      PresentComplete(
+         color_buffer);
 }

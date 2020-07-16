@@ -39,9 +39,14 @@ public:
    template < typename T >
    std::vector< T > ReadData(
       const size_t offset,
-      const size_t size_in_bytes ) const noexcept;
+      const size_t size ) const noexcept;
 
    bool ReadData(
+      const size_t offset,
+      const size_t size_in_bytes,
+      void * const data ) const noexcept;
+
+   bool WriteData(
       const size_t offset,
       const size_t size_in_bytes,
       void * const data ) const noexcept;
@@ -58,14 +63,16 @@ private:
 template < typename T >
 std::vector< T > PixelBufferObject::ReadData(
    const size_t offset,
-   const size_t size_in_bytes ) const noexcept
+   const size_t size ) const noexcept
 {
    std::vector< T > data;
 
+   const size_t size_in_bytes =
+      size * sizeof(T);
+
    if (size_in_bytes && IsBound())
    {
-      data.resize(
-         size_in_bytes + sizeof(T) - size_in_bytes % sizeof(T));
+      data.resize(size);
 
       const bool read =
          ReadData(
