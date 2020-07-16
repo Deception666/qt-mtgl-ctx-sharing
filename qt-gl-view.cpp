@@ -1,4 +1,5 @@
 #include "qt-gl-view.h"
+#include "color-buffer-data.h"
 #include "render-thread.h"
 #include "osg-view.h"
 

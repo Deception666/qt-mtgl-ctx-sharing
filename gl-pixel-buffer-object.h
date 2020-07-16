@@ -36,9 +36,15 @@ public:
 
    uint32_t GetSize( ) const noexcept;
 
-   std::vector< uint8_t > ReadData(
+   template < typename T >
+   std::vector< T > ReadData(
       const size_t offset,
       const size_t size_in_bytes ) const noexcept;
+
+   bool ReadData(
+      const size_t offset,
+      const size_t size_in_bytes,
+      void * const data ) const noexcept;
 
 private:
    Operation current_operation_;
@@ -48,6 +54,31 @@ private:
    const uint32_t pixel_buffer_object_;
 
 };
+
+template < typename T >
+std::vector< T > PixelBufferObject::ReadData(
+   const size_t offset,
+   const size_t size_in_bytes ) const noexcept
+{
+   std::vector< T > data;
+
+   if (size_in_bytes && IsBound())
+   {
+      data.resize(
+         size_in_bytes + sizeof(T) - size_in_bytes % sizeof(T));
+
+      const bool read =
+         ReadData(
+            offset,
+            size_in_bytes,
+            data.data());
+
+      if (!read)
+         data.clear();
+   }
+
+   return data;
+}
 
 } // namespace gl
 

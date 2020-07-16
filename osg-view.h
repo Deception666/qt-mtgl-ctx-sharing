@@ -1,8 +1,6 @@
 #ifndef _OSG_VIEW_H_
 #define _OSG_VIEW_H_
 
-#include "color-buffer-data.h"
-
 #include <QtCore/QObject>
 
 #include <osg/ref_ptr>
@@ -21,6 +19,7 @@
 #include <memory>
 #include <string>
 #include <utility>
+#include <vector>
 
 namespace osg
 {
@@ -32,6 +31,12 @@ class Texture2D;
 namespace osgUtil
 {
 class SceneView;
+}
+
+namespace gl
+{
+class FenceSync;
+class PixelBufferObject;
 }
 
 class OSGGraphicsContextWrapper;
@@ -81,17 +86,38 @@ private:
    osg::ref_ptr< osg::Texture2D >
    SetupDepthBuffer( ) noexcept;
 
+   void UpdateText(
+      const GLuint color_buffer_texture_id ) const noexcept;
+
    std::pair< bool, GLuint > SetupNextFrame( ) noexcept;
    std::pair< GLuint, osg::ref_ptr< osg::FrameBufferObject > >
    GetNextFrameBuffer( ) noexcept;
+
+   void ProcessWaitingFenceSyncs( ) noexcept;
 
    uint32_t width_;
    uint32_t height_;
 
    osg::ref_ptr< osgUtil::SceneView > osg_scene_view_;
 
-   std::map< GLuint, osg::ref_ptr< osg::FrameBufferObject > > active_frame_buffers_;
-   std::map< GLuint, osg::ref_ptr< osg::FrameBufferObject > > inactive_frame_buffers_;
+   std::map<
+      GLuint,
+      std::pair<
+         std::unique_ptr< gl::PixelBufferObject >,
+         osg::ref_ptr< osg::FrameBufferObject > > >
+      active_frame_buffers_;
+   std::map<
+      GLuint,
+      std::pair<
+         std::unique_ptr< gl::PixelBufferObject >,
+         osg::ref_ptr< osg::FrameBufferObject > > >
+      inactive_frame_buffers_;
+
+   std::vector<
+      std::pair<
+         std::shared_ptr< ColorBufferData >,
+         std::unique_ptr< gl::FenceSync > > >
+      active_fence_syncs_;
 
    const QObject & parent_;
    const osg::ref_ptr< OSGGraphicsContextWrapper > parent_gc_wrapper_;

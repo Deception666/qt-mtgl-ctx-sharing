@@ -243,13 +243,14 @@ uint32_t PixelBufferObject::GetSize( ) const noexcept
    return buffer_size_bytes_;
 }
 
-std::vector< uint8_t > PixelBufferObject::ReadData(
+bool PixelBufferObject::ReadData(
    const size_t offset,
-   const size_t size_in_bytes ) const noexcept
+   const size_t size_in_bytes,
+   void * const data ) const noexcept
 {
-   std::vector< uint8_t > data;
+   bool read { false };
 
-   if (size_in_bytes && IsBound())
+   if (size_in_bytes && data && IsBound())
    {
       const auto target =
          TranslateOpToGL(
@@ -271,20 +272,20 @@ std::vector< uint8_t > PixelBufferObject::ReadData(
 
          if (buffer)
          {
-            data.resize(size_in_bytes);
-
             std::copy(
                reinterpret_cast< const uint8_t * >(buffer) + offset,
                reinterpret_cast< const uint8_t * >(buffer) + offset + size_in_bytes,
-               data.begin());
+               reinterpret_cast< uint8_t * >(data));
 
             ext::glUnmapBuffer(
                target);
+
+            read = true;
          }
       }
    }
 
-   return data;
+   return read;
 }
 
 } // namespace gl
