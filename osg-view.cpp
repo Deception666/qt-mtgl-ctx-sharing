@@ -821,49 +821,47 @@ OSGView::GetNextFrameBuffer( ) noexcept
 
 void OSGView::ProcessWaitingFenceSyncs( ) noexcept
 {
-   const auto removed =
-      std::remove_if(
-         active_fence_syncs_.begin(),
-         active_fence_syncs_.end(),
-         [ this ] ( const auto & fence_sync )
-         {
-            const bool signaled {
-               fence_sync.second->IsSignaled() };
+   auto fence_sync =
+      active_fence_syncs_.cbegin();
 
-            if (signaled)
-            {
-               const auto color_buffer_data =
-                  fence_sync.first;
+   for (; fence_sync != active_fence_syncs_.cend(); ++fence_sync)
+   {
+      if (!fence_sync->second->IsSignaled())
+      {
+         break;
+      }
+      else
+      {
+         const auto color_buffer_data =
+            fence_sync->first;
 
-               const auto active_frame_buffer =
-                  active_frame_buffers_.find(
-                     color_buffer_data->id_);
+         const auto active_frame_buffer =
+            active_frame_buffers_.find(
+               color_buffer_data->id_);
 
-               const auto & pbo =
-                  active_frame_buffer->second.first;
+         const auto & pbo =
+            active_frame_buffer->second.first;
 
-               pbo->Bind(
-                  gl::PixelBufferObject::Operation::PACK);
+         pbo->Bind(
+            gl::PixelBufferObject::Operation::PACK);
 
-               color_buffer_data->data_ =
-                  pbo->ReadData< uint32_t >(
-                     0,
-                     color_buffer_data->width_ *
-                     color_buffer_data->height_);
+         color_buffer_data->data_ =
+            pbo->ReadData< uint32_t >(
+               0,
+               color_buffer_data->width_ *
+               color_buffer_data->height_);
 
-               pbo->Bind(
-                  gl::PixelBufferObject::Operation::NONE);
+         pbo->Bind(
+            gl::PixelBufferObject::Operation::NONE);
 
-               emit
-                  Present(fence_sync.first);
-            }
-
-            return signaled;
-         });
+         emit
+            Present(fence_sync->first);
+      }
+   }
 
    active_fence_syncs_.erase(
-      removed,
-      active_fence_syncs_.end());
+      active_fence_syncs_.cbegin(),
+      fence_sync);
 }
 
 void OSGView::OnResize(
