@@ -283,7 +283,7 @@ void QtGLView::OnPresent(
       color_buffer->width_,
       color_buffer->height_,
       0,
-      GL_RGBA,
+      GL_BGRA,
       GL_UNSIGNED_BYTE,
       nullptr);
 

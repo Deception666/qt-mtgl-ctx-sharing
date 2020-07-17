@@ -319,7 +319,7 @@ void OSGView::Render( ) noexcept
          glReadPixels(
             0, 0,
             width_, height_,
-            GL_RGBA,
+            GL_BGRA,
             GL_UNSIGNED_BYTE,
             nullptr);
          
@@ -523,7 +523,7 @@ void OSGView::SetupFrameBuffer( ) noexcept
 
       color_buffer->setTextureSize(width_, height_);
       color_buffer->setInternalFormat(GL_RGBA8);
-      color_buffer->setSourceFormat(GL_RGBA);
+      color_buffer->setSourceFormat(GL_BGRA);
       color_buffer->setSourceType(GL_UNSIGNED_BYTE);
       color_buffer->setWrap(
          osg::Texture::WrapParameter::WRAP_S,
