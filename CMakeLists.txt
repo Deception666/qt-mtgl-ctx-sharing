@@ -41,10 +41,10 @@ project(
 
 set(
    CMAKE_C_FLAGS
-   "${CMAKE_CXX_FLAGS} /Zc:__cplusplus")
+   "${CMAKE_CXX_FLAGS} /Zc:__cplusplus /MP")
 set(
    CMAKE_CXX_FLAGS
-   "${CMAKE_CXX_FLAGS} /Zc:__cplusplus")
+   "${CMAKE_CXX_FLAGS} /Zc:__cplusplus /MP")
 
 try_compile(
    _has_cxx_structured_bindings
