@@ -12,10 +12,12 @@
 #include <osgUtil/SceneView>
 #include <osgUtil/UpdateVisitor>
 
+#include <osgText/String>
 #include <osgText/Text>
 
 #include <osgDB/ReadFile>
 
+#include <osg/AutoTransform>
 #include <osg/Camera>
 #include <osg/DisplaySettings>
 #include <osg/FrameStamp>
@@ -24,6 +26,7 @@
 #include <osg/GraphicsContext>
 #include <osg/Matrix>
 #include <osg/MatrixTransform>
+#include <osg/Projection>
 #include <osg/ref_ptr>
 #include <osg/Texture>
 #include <osg/Texture2D>
@@ -413,8 +416,27 @@ void OSGView::SetupOSG(
    mtransform->addChild(
       model_node);
 
-   mtransform->addChild(
+   const auto text_ortho_projection {
+      new osg::Projection {
+         osg::Matrix::ortho(
+            0.0, width_,
+            0.0, height_,
+            -1.0, 1.0) } };
+   
+   text_ortho_projection->addChild(
       new osgText::Text);
+
+   const auto rotate_to_screen {
+      new osg::AutoTransform };
+
+   rotate_to_screen->setAutoRotateMode(
+      osg::AutoTransform::ROTATE_TO_SCREEN);
+
+   rotate_to_screen->addChild(
+      text_ortho_projection);
+
+   mtransform->addChild(
+      rotate_to_screen);
 
    osg_scene_view_->setSceneData(
       mtransform);
@@ -849,11 +871,40 @@ void OSGView::UpdateText(
       osg_scene_view_->getSceneData();
 
    const auto text_node =
-      scene_data->asTransform()->getChild(1);
+      static_cast< osgText::Text * >(
+         scene_data->asTransform()->getChild(1
+            )->asTransform()->getChild(0
+               )->asGroup()->getChild(0));
+
+   std::string text {
+      text_node->getText().createUTF8EncodedString() };
+
+   text =
+      std::to_string(color_buffer_texture_id) +
+      "  " +
+      text;
+
+   text.resize(75);
 
    static_cast< osgText::Text * >(
-      text_node)->setText(
-         std::to_string(color_buffer_texture_id));
+      text_node)->setText(text);
+}
+
+void OSGView::UpdateTextProjection( ) const noexcept
+{
+   const auto scene_data =
+      osg_scene_view_->getSceneData();
+
+   const auto projection_node =
+      scene_data->asTransform()->getChild(1
+         )->asTransform()->getChild(0);
+
+   static_cast< osg::Projection * >(
+      projection_node)->setMatrix(
+         osg::Matrix::ortho(
+            0.0, width_,
+            0.0, height_,
+            -1.0, 1.0));
 }
 
 std::pair< bool, GLuint > OSGView::SetupNextFrame( ) noexcept
@@ -1074,4 +1125,6 @@ void OSGView::OnResize(
 {
    width_ = static_cast< uint32_t >(width);
    height_ = static_cast< uint32_t >(height);
+
+   UpdateTextProjection();
 }

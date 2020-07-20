@@ -104,6 +104,7 @@ private:
 
    void UpdateText(
       const GLuint color_buffer_texture_id ) const noexcept;
+   void UpdateTextProjection( ) const noexcept;
 
    std::pair< bool, GLuint > SetupNextFrame( ) noexcept;
    std::pair< GLuint, osg::ref_ptr< osg::FrameBufferObject > >
