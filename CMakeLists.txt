@@ -78,6 +78,7 @@ add_executable(
    gl-fence-sync.cpp
    gl-fence-sync.h
    main.cpp
+   multisample.h
    osg-gc-wrapper.cpp
    osg-gc-wrapper.h
    osg-view.cpp

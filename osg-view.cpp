@@ -1,5 +1,6 @@
 #include "osg-view.h"
 #include "gl-fence-sync.h"
+#include "multisample.h"
 #include "osg-gc-wrapper.h"
 
 #if _WIN32
@@ -19,12 +20,14 @@
 #include <osg/DisplaySettings>
 #include <osg/FrameStamp>
 #include <osg/FrameBufferObject>
+#include <osg/GLExtensions>
 #include <osg/GraphicsContext>
 #include <osg/Matrix>
 #include <osg/MatrixTransform>
 #include <osg/ref_ptr>
 #include <osg/Texture>
 #include <osg/Texture2D>
+#include <osg/Texture2DMultisample>
 #include <osg/Vec3>
 
 #include <QMetaType>
@@ -39,9 +42,10 @@
 #include <iostream>
 #include <type_traits>
 
-#define USE_GL_FLUSH 0
+#define USE_GL_FLUSH 1
 #define USE_GL_FINISH 0
 #define SHARE_WITH_PARENT_GC_CONTEXT 0
+#define USE_SINGLE_DEPTH_STENCIL_MULTISAMPLE_ATTACHMENT 1
 
 static const auto qt_meta_type_int32_t =
    qRegisterMetaType< int32_t >("int32_t");
@@ -221,6 +225,7 @@ void ReleaseHiddenGLContext( ) noexcept
 OSGView::OSGView(
    const int32_t width,
    const int32_t height,
+   const Multisample multisample,
    const QObject & parent,
    const std::any parent_gl_context,
    const std::string & model ) noexcept :
@@ -255,7 +260,7 @@ graphics_context_ {
 #endif // SHARE_WITH_PARENT_GC_CONTEXT
 
    SetupOSG(model);
-   SetupFrameBuffer();
+   SetupFrameBuffer(multisample);
    SetupSignalsSlots();
 }
 
@@ -313,7 +318,9 @@ void OSGView::Render( ) noexcept
          osg_scene_view_->update();
          osg_scene_view_->cull();
          osg_scene_view_->draw();
-         
+
+         gl::FenceSync fence_sync;
+
 #if USE_GL_FLUSH
          glFlush();
 #endif
@@ -321,8 +328,6 @@ void OSGView::Render( ) noexcept
 #if USE_GL_FINISH
          glFinish();
 #endif
-
-         gl::FenceSync fence_sync;
 
          if (fence_sync.Valid() &&
              !fence_sync.IsSignaled())
@@ -382,6 +387,9 @@ void OSGView::OnSetCameraLookAt(
 void OSGView::SetupOSG(
    const std::string & model ) noexcept
 {
+   graphics_context_->getState()->get< osg::GLExtensions >(
+      )->isTextureStorageEnabled = false;
+
    osg_scene_view_->setDefaults();
 
    osg_scene_view_->setState(
@@ -491,12 +499,55 @@ private:
 
 };
 
-void OSGView::SetupFrameBuffer( ) noexcept
+void OSGView::SetupFrameBuffer(
+   const Multisample multisample ) noexcept
 {
    graphics_context_->makeCurrent();
 
    const auto depth_buffer =
-      SetupDepthBuffer();
+      SetupDepthBuffer(multisample);
+
+   const auto multisample_buffer =
+      SetupMultisampleBuffer(multisample);
+
+   if (multisample_buffer)
+   {
+#if !USE_SINGLE_DEPTH_STENCIL_MULTISAMPLE_ATTACHMENT
+      const auto stencil_buffer =
+         SetupStencilBuffer(multisample);
+#endif
+
+      multisample_frame_buffer_ =
+         new osg::FrameBufferObject;
+
+      multisample_frame_buffer_->setAttachment(
+         osg::FrameBufferObject::BufferComponent::COLOR_BUFFER0,
+         osg::FrameBufferAttachment { multisample_buffer });
+
+#if USE_SINGLE_DEPTH_STENCIL_MULTISAMPLE_ATTACHMENT
+      multisample_frame_buffer_->setAttachment(
+         osg::FrameBufferObject::BufferComponent::PACKED_DEPTH_STENCIL_BUFFER,
+         osg::FrameBufferAttachment {
+            static_cast< osg::Texture2DMultisample * >(
+               depth_buffer.get()) });
+#else
+      multisample_frame_buffer_->setAttachment(
+         osg::FrameBufferObject::BufferComponent::DEPTH_BUFFER,
+         osg::FrameBufferAttachment {
+            static_cast< osg::Texture2DMultisample * >(
+               depth_buffer.get()) });
+      multisample_frame_buffer_->setAttachment(
+         osg::FrameBufferObject::BufferComponent::STENCIL_BUFFER,
+         osg::FrameBufferAttachment {
+            stencil_buffer });
+#endif
+
+      multisample_frame_buffer_->apply(
+         *graphics_context_->getState());
+
+      osg_scene_view_->getRenderStage()->setFrameBufferObject(
+         multisample_frame_buffer_);
+   }
 
    for (size_t i { 0 }; i < 3; ++i)
    {
@@ -530,9 +581,15 @@ void OSGView::SetupFrameBuffer( ) noexcept
       frame_buffer->setAttachment(
          osg::FrameBufferObject::BufferComponent::COLOR_BUFFER0,
          osg::FrameBufferAttachment { color_buffer });
-      frame_buffer->setAttachment(
-         osg::FrameBufferObject::BufferComponent::PACKED_DEPTH_STENCIL_BUFFER,
-         osg::FrameBufferAttachment { depth_buffer });
+
+      if (!multisample_buffer)
+      {
+         frame_buffer->setAttachment(
+            osg::FrameBufferObject::BufferComponent::PACKED_DEPTH_STENCIL_BUFFER,
+            osg::FrameBufferAttachment {
+               static_cast< osg::Texture2D * >(
+                  depth_buffer.get()) });
+      }
 
       frame_buffer->apply(
          *graphics_context_->getState());
@@ -611,18 +668,58 @@ void OSGView::ReleaseSignalsSlots( ) noexcept
 #define GL_DEPTH32F_STENCIL8 0x8CAD
 #define GL_FLOAT_32_UNSIGNED_INT_24_8_REV 0x8DAD
 
-osg::ref_ptr< osg::Texture2D > OSGView::SetupDepthBuffer( ) noexcept
+osg::ref_ptr< osg::Texture >
+OSGView::SetupDepthBuffer(
+   const Multisample multisample ) noexcept
 {
    assert(
       graphics_context_->isCurrent());
 
-   osg::ref_ptr< osg::Texture2D > depth_buffer {
-      new osg::Texture2D };
+   osg::ref_ptr< osg::Texture > depth_buffer {
+      nullptr };
 
-   depth_buffer->setTextureSize(width_, height_);
-   depth_buffer->setInternalFormat(GL_DEPTH32F_STENCIL8);
-   depth_buffer->setSourceFormat(GL_DEPTH_STENCIL);
-   depth_buffer->setSourceType(GL_FLOAT_32_UNSIGNED_INT_24_8_REV);
+   if (multisample == Multisample::NONE)
+   {
+      const auto buffer =
+         new osg::Texture2D;
+
+      buffer->setTextureSize(width_, height_);
+#if USE_SINGLE_DEPTH_STENCIL_MULTISAMPLE_ATTACHMENT
+      buffer->setInternalFormat(GL_DEPTH32F_STENCIL8);
+      buffer->setSourceFormat(GL_DEPTH_STENCIL);
+      buffer->setSourceType(GL_FLOAT_32_UNSIGNED_INT_24_8_REV);
+#else
+      buffer->setInternalFormat(GL_DEPTH_COMPONENT32F);
+      buffer->setSourceFormat(GL_DEPTH_COMPONENT);
+      buffer->setSourceType(GL_FLOAT);
+#endif
+
+      buffer->setSubloadCallback(
+         new FrameBufferSubloadCallback);
+
+      depth_buffer = buffer;
+   }
+   else
+   {
+      const auto buffer =
+         new osg::Texture2DMultisample {
+            static_cast< GLsizei >(multisample),
+            GL_FALSE };
+
+      buffer->setTextureSize(width_, height_);
+#if USE_SINGLE_DEPTH_STENCIL_MULTISAMPLE_ATTACHMENT
+      buffer->setInternalFormat(GL_DEPTH32F_STENCIL8);
+      buffer->setSourceFormat(GL_DEPTH_STENCIL);
+      buffer->setSourceType(GL_FLOAT_32_UNSIGNED_INT_24_8_REV);
+#else
+      buffer->setInternalFormat(GL_DEPTH_COMPONENT32F);
+      buffer->setSourceFormat(GL_DEPTH_COMPONENT);
+      buffer->setSourceType(GL_FLOAT);
+#endif
+
+      depth_buffer = buffer;
+   }
+
    depth_buffer->setWrap(
       osg::Texture::WrapParameter::WRAP_S,
       osg::Texture::WrapMode::CLAMP_TO_EDGE);
@@ -637,19 +734,112 @@ osg::ref_ptr< osg::Texture2D > OSGView::SetupDepthBuffer( ) noexcept
       osg::Texture::FilterMode::NEAREST);
    depth_buffer->setResizeNonPowerOfTwoHint(false);
 
-   depth_buffer->setSubloadCallback(
-      new FrameBufferSubloadCallback);
-
    depth_buffer->apply(
       *graphics_context_->getState());
 
    std::cout
       << "Depth ID = "
       << depth_buffer->getTextureObject(
-         graphics_context_->getState()->getContextID())->id()
+            graphics_context_->getState()->getContextID())->id()
       << std::endl;
 
    return depth_buffer;
+}
+
+osg::ref_ptr< osg::Texture2DMultisample >
+OSGView::SetupStencilBuffer(
+   const Multisample multisample ) noexcept
+{
+   assert(
+      graphics_context_->isCurrent());
+
+   osg::ref_ptr< osg::Texture2DMultisample > stencil_buffer {
+      nullptr };
+
+   if (multisample != Multisample::NONE)
+   {
+      stencil_buffer =
+         new osg::Texture2DMultisample {
+            static_cast< GLsizei >(multisample),
+            GL_FALSE };
+
+      stencil_buffer->setTextureSize(width_, height_);
+      stencil_buffer->setInternalFormat(GL_STENCIL_INDEX8_EXT);
+      stencil_buffer->setSourceFormat(GL_STENCIL_INDEX);
+      stencil_buffer->setSourceType(GL_UNSIGNED_BYTE);
+      stencil_buffer->setWrap(
+         osg::Texture::WrapParameter::WRAP_S,
+         osg::Texture::WrapMode::CLAMP_TO_EDGE);
+      stencil_buffer->setWrap(
+         osg::Texture::WrapParameter::WRAP_T,
+         osg::Texture::WrapMode::CLAMP_TO_EDGE);
+      stencil_buffer->setFilter(
+         osg::Texture::FilterParameter::MIN_FILTER,
+         osg::Texture::FilterMode::NEAREST);
+      stencil_buffer->setFilter(
+         osg::Texture::FilterParameter::MAG_FILTER,
+         osg::Texture::FilterMode::NEAREST);
+      stencil_buffer->setResizeNonPowerOfTwoHint(false);
+
+      stencil_buffer->apply(
+         *graphics_context_->getState());
+      
+      std::cout
+         << "Stencil ID = "
+         << stencil_buffer->getTextureObject(
+               graphics_context_->getState()->getContextID())->id()
+         << std::endl;
+   }
+
+   return stencil_buffer;
+}
+
+osg::ref_ptr< osg::Texture2DMultisample >
+OSGView::SetupMultisampleBuffer(
+   const Multisample multisample ) noexcept
+{
+   assert(
+      graphics_context_->isCurrent());
+
+   osg::ref_ptr< osg::Texture2DMultisample > multisample_buffer {
+      nullptr };
+
+   if (multisample != Multisample::NONE)
+   {
+      multisample_buffer =
+         new osg::Texture2DMultisample {
+            static_cast< GLsizei >(multisample),
+            GL_FALSE };
+
+      multisample_buffer->setTextureSize(width_, height_);
+      multisample_buffer->setInternalFormat(GL_RGBA8);
+      multisample_buffer->setSourceFormat(GL_RGBA);
+      multisample_buffer->setSourceType(GL_UNSIGNED_BYTE);
+      multisample_buffer->setWrap(
+         osg::Texture::WrapParameter::WRAP_S,
+         osg::Texture::WrapMode::CLAMP_TO_EDGE);
+      multisample_buffer->setWrap(
+         osg::Texture::WrapParameter::WRAP_T,
+         osg::Texture::WrapMode::CLAMP_TO_EDGE);
+      multisample_buffer->setFilter(
+         osg::Texture::FilterParameter::MIN_FILTER,
+         osg::Texture::FilterMode::NEAREST);
+      multisample_buffer->setFilter(
+         osg::Texture::FilterParameter::MAG_FILTER,
+         osg::Texture::FilterMode::NEAREST);
+      multisample_buffer->setResizeNonPowerOfTwoHint(false);
+
+      multisample_buffer->apply(
+         *graphics_context_->getState());
+      
+      std::cout
+         << "Multisample ID = "
+         << multisample_buffer->getTextureObject(
+               graphics_context_->getState()->getContextID())->id()
+         << std::endl;
+   }
+
+   return multisample_buffer;
 }
 
 void OSGView::UpdateText(
@@ -713,33 +903,109 @@ std::pair< bool, GLuint > OSGView::SetupNextFrame( ) noexcept
             width_, height_);
       }
 
-      const auto depth_buffer =
-         const_cast< osg::Texture2D * >(
-            static_cast< const osg::Texture2D * >(
-               frame_buffer.second->getAttachment(
-                  osg::FrameBufferObject::BufferComponent::PACKED_DEPTH_STENCIL_BUFFER).getTexture()));
-
-      if (depth_buffer->getTextureWidth() != width_ ||
-          depth_buffer->getTextureHeight() != height_)
+      if (multisample_frame_buffer_)
       {
-         const auto subload_callback =
-            static_cast< FrameBufferSubloadCallback * >(
-               depth_buffer->getSubloadCallback());
+         const auto multisample_color_texture =
+         const_cast< osg::Texture2DMultisample * >(
+            static_cast< const osg::Texture2DMultisample * >(
+               multisample_frame_buffer_->getAttachment(
+                  osg::FrameBufferObject::BufferComponent::COLOR_BUFFER0).getTexture()));
 
-         subload_callback->SetPerformingResize(true);
+         if (multisample_color_texture->getTextureWidth() != width_ ||
+             multisample_color_texture->getTextureHeight() != height_)
+         {
+            multisample_color_texture->setTextureSize(
+               width_,
+               height_);
 
-         depth_buffer->setTextureSize(
-            width_,
-            height_);
+            multisample_color_texture->apply(
+               *graphics_context_->getState());
 
-         depth_buffer->apply(
-            *graphics_context_->getState());
-
-         subload_callback->SetPerformingResize(false);
+            graphics_context_->getState()->get< osg::GLExtensions >(
+               )->glTexImage2DMultisample(
+                     multisample_color_texture->getTextureTarget(),
+                     multisample_color_texture->getNumSamples(),
+                     multisample_color_texture->getInternalFormat(),
+                     width_, height_,
+                     multisample_color_texture->getFixedSampleLocations());
+         }
       }
 
-      osg_scene_view_->getRenderStage()->setFrameBufferObject(
-         frame_buffer.second);
+      if (multisample_frame_buffer_)
+      {
+#if USE_SINGLE_DEPTH_STENCIL_MULTISAMPLE_ATTACHMENT
+         const osg::FrameBufferObject::BufferComponent attachments[] {
+            osg::FrameBufferObject::BufferComponent::PACKED_DEPTH_STENCIL_BUFFER
+         };
+#else
+         const osg::FrameBufferObject::BufferComponent attachments[] {
+            osg::FrameBufferObject::BufferComponent::DEPTH_BUFFER,
+            osg::FrameBufferObject::BufferComponent::STENCIL_BUFFER
+         };
+#endif
+
+         for (const auto attachment : attachments)
+         {
+            const auto attachment_texture =
+               const_cast< osg::Texture2DMultisample * >(
+                  static_cast< const osg::Texture2DMultisample* >(
+                     multisample_frame_buffer_->getAttachment(
+                        attachment).getTexture()));
+            
+            if (attachment_texture->getTextureWidth() != width_ ||
+                attachment_texture->getTextureHeight() != height_)
+            {
+               attachment_texture->setTextureSize(
+                  width_,
+                  height_);
+            
+               attachment_texture->apply(
+                  *graphics_context_->getState());
+
+               graphics_context_->getState()->get< osg::GLExtensions >(
+                  )->glTexImage2DMultisample(
+                        attachment_texture->getTextureTarget(),
+                        attachment_texture->getNumSamples(),
+                        attachment_texture->getInternalFormat(),
+                        width_, height_,
+                        attachment_texture->getFixedSampleLocations());
+            }
+         }
+      }
+      else
+      {
+         const auto depth_buffer =
+            const_cast< osg::Texture2D * >(
+               static_cast< const osg::Texture2D * >(
+                  frame_buffer.second->getAttachment(
+                     osg::FrameBufferObject::BufferComponent::PACKED_DEPTH_STENCIL_BUFFER).getTexture()));
+         
+         if (depth_buffer->getTextureWidth() != width_ ||
+             depth_buffer->getTextureHeight() != height_)
+         {
+            const auto subload_callback =
+               static_cast< FrameBufferSubloadCallback * >(
+                  depth_buffer->getSubloadCallback());
+         
+            subload_callback->SetPerformingResize(true);
+         
+            depth_buffer->setTextureSize(
+               width_,
+               height_);
+         
+            depth_buffer->apply(
+               *graphics_context_->getState());
+         
+            subload_callback->SetPerformingResize(false);
+         }
+      }
+
+      if (multisample_frame_buffer_)
+         osg_scene_view_->getRenderStage()->setMultisampleResolveFramebufferObject(
+            frame_buffer.second);
+      else
+         osg_scene_view_->getRenderStage()->setFrameBufferObject(
+            frame_buffer.second);
 
       setup.first = true;
       setup.second = frame_buffer.first;

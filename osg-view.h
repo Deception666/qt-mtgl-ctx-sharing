@@ -30,7 +30,9 @@ namespace osg
 {
 class FrameBufferObject;
 class GraphicsContext;
+class Texture;
 class Texture2D;
+class Texture2DMultisample;
 }
 
 namespace osgUtil
@@ -45,6 +47,8 @@ class FenceSync;
 
 class OSGGraphicsContextWrapper;
 
+enum class Multisample;
+
 class OSGView :
    public QObject
 {
@@ -54,6 +58,7 @@ public:
    OSGView(
       const int32_t width,
       const int32_t height,
+      const Multisample multisample,
       const QObject & parent,
       const std::any parent_gl_context,
       const std::string & model ) noexcept;
@@ -83,11 +88,19 @@ private slots:
 private:
    void SetupOSG(
       const std::string & model ) noexcept;
-   void SetupFrameBuffer( ) noexcept;
+   void SetupFrameBuffer(
+      const Multisample multisample ) noexcept;
    void SetupSignalsSlots( ) noexcept;
    void ReleaseSignalsSlots( ) noexcept;
-   osg::ref_ptr< osg::Texture2D >
-   SetupDepthBuffer( ) noexcept;
+   osg::ref_ptr< osg::Texture >
+   SetupDepthBuffer(
+      const Multisample multisample ) noexcept;
+   osg::ref_ptr< osg::Texture2DMultisample >
+   SetupStencilBuffer(
+      const Multisample multisample ) noexcept;
+   osg::ref_ptr< osg::Texture2DMultisample >
+   SetupMultisampleBuffer(
+      const Multisample multisample ) noexcept;
 
    void UpdateText(
       const GLuint color_buffer_texture_id ) const noexcept;
@@ -102,6 +115,8 @@ private:
    uint32_t height_;
 
    osg::ref_ptr< osgUtil::SceneView > osg_scene_view_;
+
+   osg::ref_ptr< osg::FrameBufferObject > multisample_frame_buffer_;
 
    std::map< GLuint, osg::ref_ptr< osg::FrameBufferObject > > active_frame_buffers_;
    std::map< GLuint, osg::ref_ptr< osg::FrameBufferObject > > inactive_frame_buffers_;

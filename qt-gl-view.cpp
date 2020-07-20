@@ -1,6 +1,7 @@
 #include "qt-gl-view.h"
-#include "render-thread.h"
+#include "multisample.h"
 #include "osg-view.h"
+#include "render-thread.h"
 
 #if _WIN32
 #include <QtPlatformHeaders/QWGLNativeContext>
@@ -55,6 +56,7 @@ void QtGLView::initializeGL( )
             new OSGView {
                width(),
                height(),
+               Multisample::SIXTEEN,
                *this,
 #if _WIN32
                std::any {
