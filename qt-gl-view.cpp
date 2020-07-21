@@ -3,16 +3,9 @@
 #include "osg-view.h"
 #include "render-thread.h"
 
-#if _WIN32
-#include <QtPlatformHeaders/QWGLNativeContext>
-#endif // _WIN32
-
 #include <QtGui/QCloseEvent>
 #include <QtGui/QOpenGLContext>
 
-#include <QtCore/QVariant>
-
-#include <tuple>
 #include <utility>
 
 void ReleaseOSGView(
@@ -58,17 +51,6 @@ void QtGLView::initializeGL( )
                height(),
                Multisample::SIXTEEN,
                *this,
-#if _WIN32
-               std::any {
-                  std::make_tuple(
-                     qvariant_cast< QWGLNativeContext >(
-                        context()->nativeHandle()).window(),
-                     GetDC(
-                        qvariant_cast< QWGLNativeContext >(
-                           context()->nativeHandle()).window()),
-                     qvariant_cast< QWGLNativeContext >(
-                        context()->nativeHandle()).context()) },
-#endif // _WIN32
                model_ },
             &ReleaseOSGView);
 

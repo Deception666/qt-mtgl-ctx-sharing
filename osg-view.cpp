@@ -47,7 +47,6 @@
 
 #define USE_GL_FLUSH 1
 #define USE_GL_FINISH 0
-#define SHARE_WITH_PARENT_GC_CONTEXT 0
 #define USE_SINGLE_DEPTH_STENCIL_MULTISAMPLE_ATTACHMENT 1
 
 static const auto qt_meta_type_int32_t =
@@ -194,24 +193,13 @@ void InitHiddenGLContext(
    {
       LoadGraphicsSubsystem();
 
-      if (!hidden_context.has_value())
-      {
-         hidden_graphics_context_ =
-            CreateGraphicsContext(
-               1, 1,
-               "hidden graphics context",
-               nullptr);
-      }
-      else
-      {
-#if _WIN32
-         hidden_graphics_context_ =
-            new OSGGraphicsContextWrapper {
-               hidden_context };
-#else
-#error "Define for this platform!"
-#endif
-      }
+      hidden_graphics_context_ =
+         CreateGraphicsContext(
+            1, 1,
+            "hidden graphics context",
+            hidden_context.has_value() ?
+            new OSGGraphicsContextWrapper { hidden_context } :
+            nullptr);
    }
 }
 
@@ -230,16 +218,12 @@ OSGView::OSGView(
    const int32_t height,
    const Multisample multisample,
    const QObject & parent,
-   const std::any parent_gl_context,
    const std::string & model ) noexcept :
 width_ { static_cast< uint32_t >(width) },
 height_ { static_cast< uint32_t >(height) },
 osg_scene_view_ { new osgUtil::SceneView { nullptr } },
 QObject { nullptr },
 parent_ { parent },
-parent_gc_wrapper_ {
-   new OSGGraphicsContextWrapper {
-      parent_gl_context } },
 graphics_context_ {
    CreateGraphicsContext(
       1, 1,
@@ -247,20 +231,6 @@ graphics_context_ {
       hidden_graphics_context_) }
 {
    assert(graphics_context_.get());
-
-#if SHARE_WITH_PARENT_GC_CONTEXT
-#if _WIN32
-   const auto shared =
-      wglShareLists(
-         parent_gc_wrapper_->getWGLContext(),
-         dynamic_cast< osgViewer::GraphicsHandleWin32 * >(
-            graphics_context_.get())->getWGLContext());
-
-   assert(shared);
-#else
-#error "Define for this platform!"
-#endif // _WIN32
-#endif // SHARE_WITH_PARENT_GC_CONTEXT
 
    SetupOSG(model);
    SetupFrameBuffer(multisample);

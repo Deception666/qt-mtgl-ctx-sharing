@@ -45,8 +45,6 @@ namespace gl
 class FenceSync;
 }
 
-class OSGGraphicsContextWrapper;
-
 enum class Multisample;
 
 class OSGView :
@@ -60,7 +58,6 @@ public:
       const int32_t height,
       const Multisample multisample,
       const QObject & parent,
-      const std::any parent_gl_context,
       const std::string & model ) noexcept;
    ~OSGView( ) noexcept;
 
@@ -126,7 +123,6 @@ private:
       active_fence_syncs_;
 
    const QObject & parent_;
-   const osg::ref_ptr< OSGGraphicsContextWrapper > parent_gc_wrapper_;
    const osg::ref_ptr< osg::GraphicsContext > graphics_context_;
 
 };
