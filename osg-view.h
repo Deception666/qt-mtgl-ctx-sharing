@@ -67,7 +67,8 @@ public:
 
 signals:
    void Present(
-      const GLuint color_buffer_texture_id );
+      const std::shared_ptr<
+         std::pair< GLuint, gl::FenceSync > >  & fence_sync );
 
 protected:
 
@@ -76,7 +77,8 @@ private slots:
       const int32_t width,
       const int32_t height ) noexcept;
    void OnPresentComplete(
-      const GLuint color_buffer_texture_id ) noexcept;
+      const std::shared_ptr<
+         std::pair< GLuint, gl::FenceSync > > & fence_sync ) noexcept;
    void OnSetCameraLookAt(
       const std::array< double, 3 > & eye,
       const std::array< double, 3 > & center,
@@ -107,8 +109,6 @@ private:
    std::pair< GLuint, osg::ref_ptr< osg::FrameBufferObject > >
    GetNextFrameBuffer( ) noexcept;
 
-   void ProcessWaitingFenceSyncs( ) noexcept;
-
    uint32_t width_;
    uint32_t height_;
 
@@ -118,9 +118,6 @@ private:
 
    std::map< GLuint, osg::ref_ptr< osg::FrameBufferObject > > active_frame_buffers_;
    std::map< GLuint, osg::ref_ptr< osg::FrameBufferObject > > inactive_frame_buffers_;
-
-   std::vector< std::pair< GLuint, std::unique_ptr< gl::FenceSync > > >
-      active_fence_syncs_;
 
    const QObject & parent_;
    const osg::ref_ptr< osg::GraphicsContext > graphics_context_;

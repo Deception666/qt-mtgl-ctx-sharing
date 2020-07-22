@@ -56,6 +56,9 @@ static const auto qt_meta_type_GLuint =
 static const auto qt_meta_type_std_array_doulbe_3 =
    qRegisterMetaType< std::array< double, 3 > >(
       "std::array< double, 3 >");
+static const auto qt_meta_type_std_shared_ptr_std_pair_GLuint_gl_FenceSync =
+   qRegisterMetaType< std::shared_ptr< std::pair< GLuint, gl::FenceSync > > >(
+      "std::shared_ptr< std::pair< GLuint, gl::FenceSync > >");
 
 #if _WIN32
 static std::unique_ptr<
@@ -302,17 +305,21 @@ void OSGView::Render( ) noexcept
          glFinish();
 #endif
 
-         if (fence_sync.Valid() &&
-             !fence_sync.IsSignaled())
+         const auto fence_sync_ptr {
+            std::make_shared< std::pair< GLuint, gl::FenceSync > >(
+               std::make_pair(
+                  color_buffer_id,
+                  std::move(fence_sync))) };
+
+         if (!fence_sync_ptr->second.Valid())
          {
-            active_fence_syncs_.emplace_back(
-               color_buffer_id,
-               std::make_unique< gl::FenceSync >(
-                  std::move(fence_sync)));
+            OnPresentComplete(
+               fence_sync_ptr);
          }
          else
          {
-            emit Present(color_buffer_id);
+            emit Present(
+               fence_sync_ptr);
          }
       }
 
@@ -325,16 +332,17 @@ void OSGView::PostRender( ) noexcept
 }
 
 void OSGView::OnPresentComplete(
-   const GLuint color_buffer_texture_id ) noexcept
+   const std::shared_ptr<
+      std::pair< GLuint, gl::FenceSync > > & fence_sync ) noexcept
 {
 #if _has_cxx_std_map_extract
    inactive_frame_buffers_.insert(
       active_frame_buffers_.extract(
-         color_buffer_texture_id));
+         fence_sync->first));
 #else
    const auto active_frame_buffer =
       active_frame_buffers_.find(
-         color_buffer_texture_id);
+         fence_sync->first);
 
    inactive_frame_buffers_.insert({
       active_frame_buffer->first,
@@ -615,9 +623,13 @@ void OSGView::SetupSignalsSlots( ) noexcept
       SLOT(OnResize(const int32_t, const int32_t)));
    QObject::connect(
       &parent_,
-      SIGNAL(PresentComplete(const GLuint)),
+      SIGNAL(PresentComplete(
+         const std::shared_ptr<
+            std::pair< GLuint, gl::FenceSync > > &)),
       this,
-      SLOT(OnPresentComplete(const GLuint)));
+      SLOT(OnPresentComplete(
+         const std::shared_ptr<
+            std::pair< GLuint, gl::FenceSync > > &)));
    QObject::connect(
       &parent_,
       SIGNAL(SetCameraLookAt(
@@ -640,9 +652,13 @@ void OSGView::ReleaseSignalsSlots( ) noexcept
       SLOT(OnResize(const int32_t, const int32_t)));
    QObject::disconnect(
       &parent_,
-      SIGNAL(PresentComplete(const GLuint)),
+      SIGNAL(PresentComplete(
+         const std::shared_ptr<
+            std::pair< GLuint, gl::FenceSync > > &)),
       this,
-      SLOT(OnPresentComplete(const GLuint)));
+      SLOT(OnPresentComplete(
+         const std::shared_ptr<
+            std::pair< GLuint, gl::FenceSync > > &)));
    QObject::disconnect(
       &parent_,
       SIGNAL(SetCameraLookAt(
@@ -881,8 +897,6 @@ std::pair< bool, GLuint > OSGView::SetupNextFrame( ) noexcept
 {
    std::pair< bool, GLuint > setup { false, 0 };
 
-   ProcessWaitingFenceSyncs();
-
    const auto frame_buffer =
       GetNextFrameBuffer();
 
@@ -1064,31 +1078,6 @@ OSGView::GetNextFrameBuffer( ) noexcept
    return frame_buffer;
 }
 
-void OSGView::ProcessWaitingFenceSyncs( ) noexcept
-{
-   const auto removed =
-      std::remove_if(
-         active_fence_syncs_.begin(),
-         active_fence_syncs_.end(),
-         [ this ] ( const auto & fence_sync )
-         {
-            bool signaled {
-               fence_sync.second->IsSignaled() };
-
-            if (signaled)
-            {
-               emit
-                  Present(fence_sync.first);
-            }
-
-            return signaled;
-         });
-
-   active_fence_syncs_.erase(
-      removed,
-      active_fence_syncs_.end());
-}
-
 void OSGView::OnResize(
    const int32_t width,
    const int32_t height ) noexcept
@@ -1098,3 +1087,5 @@ void OSGView::OnResize(
 
    UpdateTextProjection();
 }
+
+#include <moc_osg-view.cpp>

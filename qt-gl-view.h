@@ -1,6 +1,8 @@
 #ifndef _QT_GL_VIEW_H_
 #define _QT_GL_VIEW_H_
 
+#include "gl-fence-sync.h"
+
 #include <QtWidgets/QOpenGLWidget>
 #include <QtWidgets/QWidget>
 
@@ -15,8 +17,10 @@
 
 #include <array>
 #include <cstdint>
+#include <list>
 #include <memory>
 #include <string>
+#include <utility>
 
 class OSGView;
 class QCloseEvent;
@@ -36,7 +40,8 @@ signals:
       const int32_t width,
       const int32_t height );
    void PresentComplete(
-      const GLuint color_buffer_texture_id );
+      const std::shared_ptr<
+         std::pair< GLuint, gl::FenceSync > > & fence_sync );
    void SetCameraLookAt(
       const std::array< double, 3 > & eye,
       const std::array< double, 3 > & center,
@@ -54,13 +59,18 @@ protected:
 
 private slots:
    void OnPresent(
-      const GLuint color_buffer_texture_id ) noexcept;
+      const std::shared_ptr<
+         std::pair< GLuint, gl::FenceSync > > & fence_sync ) noexcept;
 
 private:
    void SetupSignalsSlots( ) noexcept;
    void ReleaseSignalsSlots( ) noexcept;
 
-   GLuint color_buffer_texture_id_;
+   std::shared_ptr< std::pair< GLuint, gl::FenceSync > >
+      current_color_buffer_;
+   std::list<
+      std::shared_ptr< std::pair< GLuint, gl::FenceSync > > >
+      waiting_color_buffers_;
 
    std::shared_ptr< OSGView > osg_view_;
 

@@ -1,12 +1,11 @@
 #include "qt-gl-view.h"
+#include "gl-fence-sync.h"
 #include "multisample.h"
 #include "osg-view.h"
 #include "render-thread.h"
 
 #include <QtGui/QCloseEvent>
 #include <QtGui/QOpenGLContext>
-
-#include <utility>
 
 void ReleaseOSGView(
    const OSGView * const osg_view ) noexcept
@@ -25,7 +24,6 @@ QtGLView::QtGLView(
    std::string model,
    QWidget * const parent ) noexcept :
 QOpenGLWidget { parent },
-color_buffer_texture_id_ { 0 },
 osg_view_ { nullptr },
 model_ { std::move(model) }
 {
@@ -83,7 +81,37 @@ void QtGLView::paintGL( )
 {
    QOpenGLWidget::paintGL();
 
-   if (color_buffer_texture_id_)
+   {
+      auto color_buffer =
+         waiting_color_buffers_.cbegin();
+
+      while (waiting_color_buffers_.cend() != color_buffer)
+      {
+         if (!(*color_buffer)->second.IsSignaled())
+         {
+            update();
+
+            break;
+         }
+         else
+         {
+            if (current_color_buffer_)
+            {
+               emit PresentComplete(
+                  current_color_buffer_);
+            }
+
+            current_color_buffer_ =
+               *color_buffer;
+
+            color_buffer =
+               waiting_color_buffers_.erase(
+                  color_buffer);
+         }
+      }
+   }
+
+   if (current_color_buffer_)
    {
       glMatrixMode(GL_PROJECTION);
       glLoadIdentity();
@@ -99,7 +127,7 @@ void QtGLView::paintGL( )
 
       glBindTexture(
          GL_TEXTURE_2D,
-         color_buffer_texture_id_);
+         current_color_buffer_->first);
 
       const float tex_coords[] {
          0.0f, 1.0f,
@@ -187,17 +215,15 @@ void QtGLView::ReleaseSignalsSlots( ) noexcept
 }
 
 void QtGLView::OnPresent(
-   const GLuint color_buffer_texture_id ) noexcept
+   const std::shared_ptr<
+      std::pair< GLuint, gl::FenceSync > > & fence_sync ) noexcept
 {
-   if (color_buffer_texture_id_)
+   if (fence_sync &&
+       fence_sync->second.Valid())
    {
-      emit
-         PresentComplete(
-            color_buffer_texture_id_);
+      waiting_color_buffers_.emplace_back(
+         fence_sync);
+
+      update();
    }
-
-   color_buffer_texture_id_ =
-      color_buffer_texture_id;
-
-   update();
 }
