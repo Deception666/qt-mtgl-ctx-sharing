@@ -6,6 +6,9 @@
 #include <QtWidgets/QOpenGLWidget>
 #include <QtWidgets/QWidget>
 
+#include <QtGui/QOpenGLShaderProgram>
+#include <QtGui/QOpenGLVertexArrayObject>
+
 #include <QtCore/QObject>
 
 #if _WIN32
@@ -71,6 +74,9 @@ private:
    std::list<
       std::shared_ptr< std::pair< GLuint, gl::FenceSync > > >
       waiting_color_buffers_;
+
+   QOpenGLShaderProgram render_scene_pgm_;
+   QOpenGLVertexArrayObject scene_data_vao_;
 
    std::shared_ptr< OSGView > osg_view_;
 

@@ -6,6 +6,11 @@
 
 #include <QtGui/QCloseEvent>
 #include <QtGui/QOpenGLContext>
+#include <QtGui/QOpenGLFunctions>
+#include <QtGui/QOpenGLShader>
+
+#include <QtCore/QCoreApplication>
+#include <QtCore/QEvent>
 
 void ReleaseOSGView(
    const OSGView * const osg_view ) noexcept
@@ -24,6 +29,8 @@ QtGLView::QtGLView(
    std::string model,
    QWidget * const parent ) noexcept :
 QOpenGLWidget { parent },
+render_scene_pgm_ { this },
+scene_data_vao_ { this },
 osg_view_ { nullptr },
 model_ { std::move(model) }
 {
@@ -63,6 +70,65 @@ void QtGLView::initializeGL( )
    SetupSignalsSlots();
 
    makeCurrent();
+
+   if (osg_view_)
+   {
+      render_scene_pgm_.create();
+      
+      render_scene_pgm_.addShaderFromSourceCode(
+         QOpenGLShader::Vertex,
+         "#version 330\n"
+         "const vec4 vertices[6] ="
+         "{"
+         "  vec4(-1.0f, 1.0f, 0.0f, 1.0f),"
+         "  vec4(-1.0f, -1.0f, 0.0f, 1.0f),"
+         "  vec4(1.0f, -1.0f, 0.0f, 1.0f),"
+         "  vec4(-1.0f, 1.0f, 0.0f, 1.0f),"
+         "  vec4(1.0f, -1.0f, 0.0f, 1.0f),"
+         "  vec4(1.0f, 1.0f, 0.0f, 1.0f)"
+         "};"
+         ""
+         "const vec2 texture_coords[6] ="
+         "{"
+         "  vec2(0.0f, 1.0f),"
+         "  vec2(0.0f, 0.0f),"
+         "  vec2(1.0f, 0.0f),"
+         "  vec2(0.0f, 1.0f),"
+         "  vec2(1.0f, 0.0f),"
+         "  vec2(1.0f, 1.0f)"
+         "};"
+         ""
+         "smooth out vec2 texture_coord;"
+         ""
+         "void main( void )"
+         "{"
+         "  gl_Position = vertices[gl_VertexID];"
+         "  texture_coord = texture_coords[gl_VertexID];"
+         "}");
+      
+      render_scene_pgm_.addShaderFromSourceCode(
+         QOpenGLShader::Fragment,
+         "#version 330\n"
+         ""
+         "uniform sampler2D frame_sampler_2d;"
+         ""
+         "smooth in vec2 texture_coord;"
+         ""
+         "layout( location = 0 ) out vec4 frag_color_0;"
+         ""
+         "void main( void )"
+         "{"
+         "  frag_color_0 = texture(frame_sampler_2d, texture_coord);"
+         "}");
+
+      render_scene_pgm_.link();
+
+      render_scene_pgm_.setUniformValue(
+         "frame_sampler_2d",
+         0);
+
+      scene_data_vao_.create();
+   }
 }
 
 void QtGLView::resizeGL(
@@ -113,67 +179,25 @@ void QtGLView::paintGL( )
 
    if (current_color_buffer_)
    {
-      glMatrixMode(GL_PROJECTION);
-      glLoadIdentity();
+      render_scene_pgm_.bind();
+      scene_data_vao_.bind();
 
-      glMatrixMode(GL_MODELVIEW);
-      glLoadIdentity();
-
-      glViewport(
-         0, 0,
-         width(), height());
-
-      glEnable(GL_TEXTURE_2D);
+      const auto gl_functions =
+         context()->functions();
+      gl_functions->glActiveTexture(
+         GL_TEXTURE0);
 
       glBindTexture(
          GL_TEXTURE_2D,
          current_color_buffer_->first);
-
-      const float tex_coords[] {
-         0.0f, 1.0f,
-         0.0f, 0.0f,
-         1.0f, 0.0f,
-         0.0f, 1.0f,
-         1.0f, 0.0f,
-         1.0f, 1.0f
-      };
-
-      const float vertices[] {
-         -1.0f, 1.0f, 0.0f,
-         -1.0f, -1.0f, 0.0f,
-         1.0f, -1.0f, 0.0f,
-         -1.0f, 1.0f, 0.0f,
-         1.0f, -1.0f, 0.0f,
-         1.0f, 1.0f, 0.0f
-      };
-
-      glEnableClientState(GL_VERTEX_ARRAY);
-      glEnableClientState(GL_TEXTURE_COORD_ARRAY);
-
-      glVertexPointer(
-         3,
-         GL_FLOAT,
-         sizeof(float) * 3,
-         vertices);
-      glTexCoordPointer(
-         2,
-         GL_FLOAT,
-         sizeof(float) * 2,
-         tex_coords);
 
       glDrawArrays(
          GL_TRIANGLES,
          0,
          6);
 
-      glDisableClientState(GL_VERTEX_ARRAY);
-      glDisableClientState(GL_TEXTURE_COORD_ARRAY);
-
-      glBindTexture(
-         GL_TEXTURE_2D,
-         0);
-
-      glDisable(GL_TEXTURE_2D);
+      scene_data_vao_.release();
+      render_scene_pgm_.release();
    }
 }
 
@@ -182,12 +206,36 @@ void QtGLView::closeEvent(
 {
    ReleaseSignalsSlots();
 
+   QCoreApplication::sendPostedEvents(
+      this,
+      QEvent::Type::MetaCall);
+
    render_thread::UnregisterOSGView(
 #if _has_cxx_std_shared_ptr_weak_type
       decltype(osg_view_)::weak_type { osg_view_ });
 #else
       std::weak_ptr< OSGView > { osg_view_ });
 #endif
+
+   makeCurrent();
+   scene_data_vao_.destroy();
+   doneCurrent();
+
+   if (current_color_buffer_)
+   {
+      emit PresentComplete(
+         current_color_buffer_);
+
+      current_color_buffer_ = nullptr;
+   }
+
+   for (const auto & color_buffer : waiting_color_buffers_)
+   {
+      emit PresentComplete(
+         color_buffer);
+   }
+
+   waiting_color_buffers_.clear();
 }
 
 void QtGLView::SetupSignalsSlots( ) noexcept
