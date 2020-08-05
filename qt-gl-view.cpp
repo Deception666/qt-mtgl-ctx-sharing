@@ -20,6 +20,9 @@ void ReleaseOSGView(
       render_thread::AddOperation(
          [ osg_view ] ( )
          {
+            QCoreApplication::sendPostedEvents(
+               const_cast< OSGView * >(osg_view));
+
             delete osg_view;
          }).wait();
    }

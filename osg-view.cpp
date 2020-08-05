@@ -243,6 +243,10 @@ graphics_context_ {
 OSGView::~OSGView( ) noexcept
 {
    ReleaseSignalsSlots();
+
+   graphics_context_->makeCurrent();
+   completed_frames_.clear();
+   graphics_context_->releaseContext();
 }
 
 void OSGView::PreRender( ) noexcept
@@ -264,6 +268,8 @@ void OSGView::Render( ) noexcept
    if (osg_scene_view_)
    {
       graphics_context_->makeCurrent();
+
+      completed_frames_.clear();
 
 #if _has_cxx_structured_bindings
       const auto [next_frame_setup, color_buffer_id] =
@@ -351,6 +357,9 @@ void OSGView::OnPresentComplete(
    active_frame_buffers_.erase(
       active_frame_buffer);
 #endif
+
+   completed_frames_.push_back(
+      fence_sync);
 }
 
 void OSGView::OnSetCameraLookAt(

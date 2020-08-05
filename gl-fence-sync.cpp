@@ -98,6 +98,12 @@ fence_sync_ { CreateFenceSync() }
 
 FenceSync::~FenceSync( ) noexcept
 {
+#if _WIN32
+   assert(wglGetCurrentContext());
+#else
+#error "Define for this platform!"
+#endif
+
    if (fence_sync_)
    {
       ext::glDeleteSync(
@@ -134,6 +140,12 @@ bool FenceSync::Valid( ) const noexcept
 
 bool FenceSync::IsSignaled( ) const noexcept
 {
+#if _WIN32
+   assert(wglGetCurrentContext());
+#else
+#error "Define for this platform!"
+#endif
+
    bool signaled { false };
 
    if (Valid())

@@ -119,6 +119,10 @@ private:
    std::map< GLuint, osg::ref_ptr< osg::FrameBufferObject > > active_frame_buffers_;
    std::map< GLuint, osg::ref_ptr< osg::FrameBufferObject > > inactive_frame_buffers_;
 
+   std::vector<
+      std::shared_ptr<
+         std::pair< GLuint, gl::FenceSync > > > completed_frames_;
+
    const QObject & parent_;
    const osg::ref_ptr< osg::GraphicsContext > graphics_context_;
 
