@@ -83,6 +83,8 @@ add_executable(
    osg-gc-wrapper.h
    osg-view.cpp
    osg-view.h
+   osg-view-mouse-event.cpp
+   osg-view-mouse-event.h
    qt-gl-view.cpp
    qt-gl-view.h
    render-thread.cpp

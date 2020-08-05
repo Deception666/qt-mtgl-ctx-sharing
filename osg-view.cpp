@@ -2,6 +2,9 @@
 #include "gl-fence-sync.h"
 #include "multisample.h"
 #include "osg-gc-wrapper.h"
+#include "osg-view-mouse-event.h"
+
+#include <QtCore/QEvent>
 
 #if _WIN32
 #include <osgViewer/api/Win32/GraphicsHandleWin32>
@@ -251,16 +254,6 @@ OSGView::~OSGView( ) noexcept
 
 void OSGView::PreRender( ) noexcept
 {
-   const auto mtransform =
-      static_cast< osg::MatrixTransform * >(
-         osg_scene_view_->getSceneData());
-
-   const auto matrix =
-      mtransform->getMatrix() *
-      osg::Matrix::rotate(0.0175, 0.0, 0.0, 1.0);
-
-   mtransform->setMatrix(
-      matrix);
 }
 
 void OSGView::Render( ) noexcept
@@ -335,6 +328,39 @@ void OSGView::Render( ) noexcept
 
 void OSGView::PostRender( ) noexcept
 {
+}
+
+bool OSGView::event(
+   QEvent * const event )
+{
+   if (event->type() == MOUSE_MOVE_EVENT)
+   {
+      const auto * const mouse_event =
+         static_cast< MouseEvent * >(event);
+
+      if (mouse_event->buttons() & Qt::LeftButton)
+      {
+         const auto mtransform =
+            static_cast< osg::MatrixTransform * >(
+               osg_scene_view_->getSceneData());
+
+         const auto mouse_delta =
+            mouse_event->pos() - previous_mouse_pos_;
+
+         const auto matrix =
+            mtransform->getMatrix() *
+            osg::Matrix::rotate(0.0175 * mouse_delta.x(), 0.0, 0.0, 1.0);
+         
+         mtransform->setMatrix(
+            matrix);
+      }
+
+      previous_mouse_pos_ =
+         mouse_event->pos();
+   }
+
+    return
+       QObject::event(event);
 }
 
 void OSGView::OnPresentComplete(

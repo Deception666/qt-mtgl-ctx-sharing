@@ -2,6 +2,7 @@
 #define _OSG_VIEW_H_
 
 #include <QtCore/QObject>
+#include <QtCore/QPoint>
 
 #include <osg/ref_ptr>
 
@@ -25,6 +26,8 @@
 #include <string>
 #include <utility>
 #include <vector>
+
+class QEvent;
 
 namespace osg
 {
@@ -71,6 +74,8 @@ signals:
          std::pair< GLuint, gl::FenceSync > >  & fence_sync );
 
 protected:
+   bool event(
+      QEvent * const event ) final;
 
 private slots:
    void OnResize(
@@ -122,6 +127,8 @@ private:
    std::vector<
       std::shared_ptr<
          std::pair< GLuint, gl::FenceSync > > > completed_frames_;
+
+   QPoint previous_mouse_pos_;
 
    const QObject & parent_;
    const osg::ref_ptr< osg::GraphicsContext > graphics_context_;

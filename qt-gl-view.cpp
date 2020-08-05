@@ -2,6 +2,7 @@
 #include "gl-fence-sync.h"
 #include "multisample.h"
 #include "osg-view.h"
+#include "osg-view-mouse-event.h"
 #include "render-thread.h"
 
 #include <QtGui/QCloseEvent>
@@ -11,6 +12,8 @@
 
 #include <QtCore/QCoreApplication>
 #include <QtCore/QEvent>
+
+#include <Qt>
 
 void ReleaseOSGView(
    const OSGView * const osg_view ) noexcept
@@ -131,6 +134,8 @@ void QtGLView::initializeGL( )
          0);
 
       scene_data_vao_.create();
+
+      setMouseTracking(true);
    }
 }
 
@@ -239,6 +244,20 @@ void QtGLView::closeEvent(
    }
 
    waiting_color_buffers_.clear();
+}
+
+void QtGLView::mouseMoveEvent(
+   QMouseEvent * const event )
+{
+   if (osg_view_)
+   {
+      QCoreApplication::postEvent(
+         osg_view_.get(),
+         new MouseEvent {
+            static_cast< QEvent::Type >(MOUSE_MOVE_EVENT),
+            *event },
+         Qt::NormalEventPriority);
+   }
 }
 
 void QtGLView::SetupSignalsSlots( ) noexcept

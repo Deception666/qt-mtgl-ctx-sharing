@@ -27,6 +27,7 @@
 
 class OSGView;
 class QCloseEvent;
+class QMouseEvent;
 
 class QtGLView final :
    public QOpenGLWidget
@@ -59,6 +60,8 @@ protected:
 
    void closeEvent(
       QCloseEvent * const event ) final;
+   void mouseMoveEvent(
+      QMouseEvent * const event ) final;
 
 private slots:
    void OnPresent(
