@@ -18,6 +18,7 @@ if (${CMAKE_GENERATOR} MATCHES "^Visual Studio")
          FATAL_ERROR
          "Platform architecture not supported!")
    endif ( )
+elseif (${CMAKE_GENERATOR} MATCHES "^Unix")
 else ( )
    message(
       FATAL_ERROR
@@ -39,12 +40,14 @@ set(
 project(
    ${proj_name})
 
-set(
-   CMAKE_C_FLAGS
-   "${CMAKE_CXX_FLAGS} /Zc:__cplusplus /MP")
-set(
-   CMAKE_CXX_FLAGS
-   "${CMAKE_CXX_FLAGS} /Zc:__cplusplus /MP")
+if (WIN32)
+   set(
+      CMAKE_C_FLAGS
+      "${CMAKE_CXX_FLAGS} /Zc:__cplusplus /MP")
+   set(
+      CMAKE_CXX_FLAGS
+      "${CMAKE_CXX_FLAGS} /Zc:__cplusplus /MP")
+endif ( )
 
 try_compile(
    _has_cxx_structured_bindings
@@ -128,6 +131,17 @@ target_link_libraries(
    ${proj_name}
    PRIVATE
    OpenGL::GL)
+
+if (UNIX)
+   find_package(
+      Threads REQUIRED)
+   
+   target_link_libraries(
+      ${proj_name}
+      PRIVATE
+      Threads::Threads
+      ${CMAKE_DL_LIBS})
+endif ( )
 
 target_compile_definitions(
    ${proj_name}

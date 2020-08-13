@@ -3,9 +3,13 @@
 #if _WIN32
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
-#endif
-
 #include <GL/GL.h>
+#elif __linux__
+#include <GL/gl.h>
+#include <GL/glx.h>
+#else
+#error "Define for this platform!"
+#endif
 
 #include <algorithm>
 #include <cassert>
@@ -36,12 +40,30 @@ static GLenum (APIENTRY *glClientWaitSync)(GLsync sync, GLbitfield flags, GLuint
 static void (APIENTRY *glWaitSync)(GLsync sync, GLbitfield flags, GLuint64 timeout) { nullptr };
 static void (APIENTRY *glGetSynciv)(GLsync sync, GLenum pname, GLsizei count, GLsizei *length, GLint *values) { nullptr };
 
+#if _WIN32
+#elif __linux__
+inline decltype(glXGetProcAddress(nullptr))
+GetProcAddress( const char * const function )
+{
+   return
+      glXGetProcAddress(
+         reinterpret_cast< const GLubyte * >(function));
+}
+#else
+#error "Define for this platform!"
+#endif
+
 } // namespace ext
 
 static bool SetupExtensions( )
 {
 #if _WIN32
    assert(wglGetCurrentContext());
+#elif __linux__
+   assert(glXGetCurrentContext());
+#else
+#error "Define for this platform!"
+#endif
    
    if (!ext::glFenceSync || !ext::glIsSync ||
        !ext::glDeleteSync || !ext::glClientWaitSync ||
@@ -49,31 +71,28 @@ static bool SetupExtensions( )
    {
       ext::glFenceSync =
          reinterpret_cast< decltype(ext::glFenceSync) >(
-            wglGetProcAddress("glFenceSync"));
+            ext::GetProcAddress("glFenceSync"));
       ext::glIsSync =
          reinterpret_cast< decltype(ext::glIsSync) >(
-            wglGetProcAddress("glIsSync"));
+            ext::GetProcAddress("glIsSync"));
       ext::glDeleteSync =
          reinterpret_cast< decltype(ext::glDeleteSync) >(
-            wglGetProcAddress("glDeleteSync"));
+            ext::GetProcAddress("glDeleteSync"));
       ext::glClientWaitSync =
          reinterpret_cast< decltype(ext::glClientWaitSync) >(
-            wglGetProcAddress("glClientWaitSync"));
+            ext::GetProcAddress("glClientWaitSync"));
       ext::glWaitSync =
          reinterpret_cast< decltype(ext::glWaitSync) >(
-            wglGetProcAddress("glWaitSync"));
+            ext::GetProcAddress("glWaitSync"));
       ext::glGetSynciv =
          reinterpret_cast< decltype(ext::glGetSynciv) >(
-            wglGetProcAddress("glGetSynciv"));
+            ext::GetProcAddress("glGetSynciv"));
    }
 
    return
       ext::glFenceSync && ext::glIsSync &&
       ext::glDeleteSync && ext::glClientWaitSync &&
       ext::glWaitSync && ext::glGetSynciv;
-#else
-#error "Define for this platform!"
-#endif
 }
 
 static void * CreateFenceSync( )
@@ -100,6 +119,8 @@ FenceSync::~FenceSync( ) noexcept
 {
 #if _WIN32
    assert(wglGetCurrentContext());
+#elif __linux__
+   assert(glXGetCurrentContext());
 #else
 #error "Define for this platform!"
 #endif
@@ -116,8 +137,8 @@ FenceSync::FenceSync(
 fence_sync_ { nullptr }
 {
    std::swap(
-      const_cast< ext::GLsync >(fence_sync_),
-      const_cast< ext::GLsync >(o.fence_sync_));
+      const_cast< ext::GLsync & >(fence_sync_),
+      const_cast< ext::GLsync & >(o.fence_sync_));
 }
 
 FenceSync & FenceSync::operator = (
@@ -126,8 +147,8 @@ FenceSync & FenceSync::operator = (
    if (&o != this)
    {
       std::swap(
-         const_cast< ext::GLsync >(fence_sync_),
-         const_cast< ext::GLsync >(o.fence_sync_));
+         const_cast< ext::GLsync & >(fence_sync_),
+         const_cast< ext::GLsync & >(o.fence_sync_));
    }
 
    return *this;
@@ -142,6 +163,8 @@ bool FenceSync::IsSignaled( ) const noexcept
 {
 #if _WIN32
    assert(wglGetCurrentContext());
+#elif __linux__
+   assert(glXGetCurrentContext());
 #else
 #error "Define for this platform!"
 #endif

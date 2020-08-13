@@ -9,9 +9,12 @@
 #if _WIN32
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
-#endif
-
 #include <GL/GL.h>
+#elif __linux__
+#include <GL/gl.h>
+#else
+#error "Define for this platform!"
+#endif
 
 #if _has_cxx_std_any
 #include <any>

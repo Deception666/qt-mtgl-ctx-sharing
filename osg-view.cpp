@@ -1,7 +1,9 @@
 #include "osg-view.h"
 #include "gl-fence-sync.h"
 #include "multisample.h"
+#if _WIN32
 #include "osg-gc-wrapper.h"
+#endif
 #include "osg-view-mouse-event.h"
 
 #include <QtCore/QEvent>
@@ -38,15 +40,17 @@
 
 #include <QMetaType>
 
-#if _WIN32
-#define WIN32_LEAN_AND_MEAN
-#include <windows.h>
-#endif // _WIN32
-
 #include <cassert>
 #include <chrono>
 #include <iostream>
 #include <type_traits>
+
+#if __linux__
+// X11 headers have defines that cause issues with qt
+#include "osg-gc-wrapper.h"
+
+#include <dlfcn.h>
+#endif
 
 #define USE_GL_FLUSH 1
 #define USE_GL_FINISH 0
@@ -70,14 +74,31 @@ static std::unique_ptr<
    graphics_subsystem_module_ {
       nullptr,
       &FreeLibrary };
-#else // _WIN32
-static std::unique_ptr< uintptr_t >
-   graphics_subsystem_module_ { nullptr };
+#elif __linux__
+
+// template attributes do not retrain their parameters attributes
+// because they are not a part of the name mangling.  this has
+// to do with dlclose having noexcept...
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wignored-attributes"
+
+static std::unique_ptr<
+   void,
+   decltype(&dlclose) >
+   graphics_subsystem_module_ {
+      nullptr,
+      &dlclose };
+
+#pragma GCC diagnostic pop
+
+#else
+#error "Define for this platform!"
 #endif // _WIN32
 
 void LoadGraphicsSubsystem( ) noexcept
 {
 #if _WIN32
+
    graphics_subsystem_module_.reset(
       LoadLibrary(
 #if !NDEBUG
@@ -86,7 +107,38 @@ void LoadGraphicsSubsystem( ) noexcept
          "osgViewer.dll")
 #endif // !NDEBUG
       );
-#endif // _WIN32
+
+#elif __linux__
+
+   const char * const library =
+#if !NDEBUG
+      // need to determine the best way to
+      // capture debug vs release here...
+      "libosgViewer.so";
+#else
+      "libosgViewer.so";
+#endif
+
+   // need to load the module and all of it
+   // so the internal registration take place
+   graphics_subsystem_module_.reset(
+      dlopen(
+         library,
+         RTLD_NOW));
+   
+   if (!graphics_subsystem_module_)
+   {
+      std::cerr
+         << "Error while trying to load "
+         << library
+         << std::endl
+         << dlerror()
+         << std::endl;
+   }
+
+#else
+#error "Define for this platform!"
+#endif
 }
 
 void HideContextWindow(
@@ -105,7 +157,10 @@ void HideContextWindow(
             window->getHWND(),
             SW_HIDE);
       }
-#endif // _WIN32
+#elif __linux__
+#else
+#error "Define for this platform!"
+#endif
    }
 }
 
@@ -124,7 +179,17 @@ CreateGraphicsContext(
    gc_traits->width = width;
    gc_traits->height = height;
 
+#if OSG_VERSION_GREATER_OR_EQUAL(3, 5, 3)
+
+#if _WIN32
    gc_traits->windowingSystemPreference = "Win32";
+#elif __linux__
+#error "Define for this platform!"
+#else
+#error "Define for this platform!"
+#endif
+
+#endif
 
    gc_traits->windowName = window_name;
    gc_traits->windowDecoration = false;
@@ -140,7 +205,15 @@ CreateGraphicsContext(
    gc_traits->sampleBuffers = 0;
    gc_traits->samples = 0;
 
+#if _WIN32
+   // need to determine if this also hides the window
    gc_traits->pbuffer = false;
+#elif __linux__
+   // this will make sure the window is not visible
+   gc_traits->pbuffer = true;
+#else
+#error "Define for this platform!"
+#endif
    gc_traits->quadBufferStereo = false;
    gc_traits->doubleBuffer = true;
 
@@ -277,8 +350,14 @@ void OSGView::Render( ) noexcept
 
       if (next_frame_setup)
       {
+#if OSG_VERSION_GREATER_OR_EQUAL(3, 5, 1)
          const auto frame_stamp =
             osg_scene_view_->getFrameStamp();
+#else
+         const auto frame_stamp =
+            &const_cast< osg::FrameStamp & >(
+               *osg_scene_view_->getFrameStamp());
+#endif
 
          frame_stamp->setFrameNumber(
             frame_stamp->getFrameNumber() + 1);
@@ -403,6 +482,13 @@ void OSGView::OnSetCameraLookAt(
 void OSGView::SetupOSG(
    const std::string & model ) noexcept
 {
+   if (!graphics_context_->getState()->get< osg::GLExtensions >())
+   {
+      graphics_context_->makeCurrent();
+      graphics_context_->getState()->initializeExtensionProcs();
+      graphics_context_->releaseContext();
+   }
+
    graphics_context_->getState()->get< osg::GLExtensions >(
       )->isTextureStorageEnabled = false;
 
@@ -453,6 +539,12 @@ void OSGView::SetupOSG(
 
    osg_scene_view_->setSceneData(
       mtransform);
+   
+   if (!osg_scene_view_->getFrameStamp())
+   {
+      osg_scene_view_->setFrameStamp(
+         new osg::FrameStamp);
+   }
 
    osg_scene_view_->getCamera()->setProjectionMatrix(
       osg::Matrix::perspective(
@@ -891,24 +983,27 @@ void OSGView::UpdateText(
    const auto scene_data =
       osg_scene_view_->getSceneData();
 
-   const auto text_node =
+   if (scene_data->asTransform()->getChild(1))
+   {
+      const auto text_node =
+         static_cast< osgText::Text * >(
+            scene_data->asTransform()->getChild(1
+               )->asTransform()->getChild(0
+                  )->asGroup()->getChild(0));
+
+      std::string text {
+         text_node->getText().createUTF8EncodedString() };
+
+      text =
+         std::to_string(color_buffer_texture_id) +
+         "  " +
+         text;
+
+      text.resize(75);
+
       static_cast< osgText::Text * >(
-         scene_data->asTransform()->getChild(1
-            )->asTransform()->getChild(0
-               )->asGroup()->getChild(0));
-
-   std::string text {
-      text_node->getText().createUTF8EncodedString() };
-
-   text =
-      std::to_string(color_buffer_texture_id) +
-      "  " +
-      text;
-
-   text.resize(75);
-
-   static_cast< osgText::Text * >(
-      text_node)->setText(text);
+         text_node)->setText(text);
+   }
 }
 
 void OSGView::UpdateTextProjection( ) const noexcept
@@ -916,16 +1011,19 @@ void OSGView::UpdateTextProjection( ) const noexcept
    const auto scene_data =
       osg_scene_view_->getSceneData();
 
-   const auto projection_node =
-      scene_data->asTransform()->getChild(1
-         )->asTransform()->getChild(0);
+   if (scene_data->asTransform()->getChild(1))
+   {
+      const auto projection_node =
+         scene_data->asTransform()->getChild(1
+            )->asTransform()->getChild(0);
 
-   static_cast< osg::Projection * >(
-      projection_node)->setMatrix(
-         osg::Matrix::ortho(
-            0.0, width_,
-            0.0, height_,
-            -1.0, 1.0));
+      static_cast< osg::Projection * >(
+         projection_node)->setMatrix(
+            osg::Matrix::ortho(
+               0.0, width_,
+               0.0, height_,
+               -1.0, 1.0));
+   }
 }
 
 std::pair< bool, GLuint > OSGView::SetupNextFrame( ) noexcept
@@ -997,7 +1095,11 @@ std::pair< bool, GLuint > OSGView::SetupNextFrame( ) noexcept
                      multisample_color_texture->getNumSamples(),
                      multisample_color_texture->getInternalFormat(),
                      width_, height_,
+#if OSG_VERSION_GREATER_OR_EQUAL(3, 5, 6)
                      multisample_color_texture->getFixedSampleLocations());
+#else
+                     GL_FALSE);
+#endif
          }
       }
 
@@ -1038,7 +1140,11 @@ std::pair< bool, GLuint > OSGView::SetupNextFrame( ) noexcept
                         attachment_texture->getNumSamples(),
                         attachment_texture->getInternalFormat(),
                         width_, height_,
+#if OSG_VERSION_GREATER_OR_EQUAL(3, 5, 6)
                         attachment_texture->getFixedSampleLocations());
+#else
+                        GL_FALSE);
+#endif
             }
          }
       }

@@ -6,6 +6,11 @@
 #if _WIN32
 #include <osgViewer/api/Win32/GraphicsHandleWin32>
 using OSGViewerGraphicsHandle = osgViewer::GraphicsHandleWin32;
+#elif __linux__
+#include <osgViewer/api/X11/GraphicsHandleX11>
+using OSGViewerGraphicsHandle = osgViewer::GraphicsHandleX11;
+#else
+#error "Define for this platform!"
 #endif
 
 #if _has_cxx_std_any

@@ -14,6 +14,8 @@
 OSGGraphicsContextWrapper::OSGGraphicsContextWrapper(
    const std::any & gl_context )
 {
+#if _WIN32
+
 #if _has_cxx_structured_bindings
    const auto & [window, device_context, wgl_context] =
 #else
@@ -28,10 +30,32 @@ OSGGraphicsContextWrapper::OSGGraphicsContextWrapper(
    const HDC device_context = std::get< 1 >(gl_context_data);
    const HGLRC wgl_context = std::get< 2 >(gl_context_data);
 #endif
-
    setHWND(window);
    setHDC(device_context);
    setWGLContext(wgl_context);
+
+#elif __linux__
+
+#if _has_cxx_structured_bindings
+   const auto & [display, glx_context] =
+#else
+   const auto & gl_context_data =
+#endif
+      std::any_cast<
+         std::tuple< Display *, GLXContext > >(
+            gl_context);
+
+#if !_has_cxx_structured_bindings
+   const Display * const display = std::get< 0 >(gl_context_data);
+   const GLXContext glx_context = std::get< 1 >(gl_context_data);
+#endif
+
+   setDisplay(display);
+   setContext(glx_context);
+
+#else
+#error "Define for this platform!"
+#endif
 
    setState(
       new osg::State);
@@ -42,7 +66,15 @@ OSGGraphicsContextWrapper::OSGGraphicsContextWrapper(
 
 bool OSGGraphicsContextWrapper::valid( ) const
 {
+#ifdef _WIN32
    return getWGLContext();
+#elif __linux__
+   return
+      getDisplay() &&
+      getContext();
+#else
+#error "Define for this platform!"
+#endif
 }
 
 bool OSGGraphicsContextWrapper::realizeImplementation( )
@@ -81,9 +113,20 @@ bool OSGGraphicsContextWrapper::makeContextCurrentImplementation(
 
 bool OSGGraphicsContextWrapper::releaseContextImplementation( )
 {
+#if _WIN32
+
    setHWND(nullptr);
    setHDC(nullptr);
    setWGLContext(nullptr);
+
+#elif __linux__
+
+   setDisplay(nullptr);
+   setContext(nullptr);
+
+#else
+#error "Define for this platform!"
+#endif
 
    return true;
 }

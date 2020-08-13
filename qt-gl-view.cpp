@@ -84,6 +84,7 @@ void QtGLView::initializeGL( )
       render_scene_pgm_.addShaderFromSourceCode(
          QOpenGLShader::Vertex,
          "#version 330\n"
+         "#extension GL_ARB_shading_language_420pack : require\n"
          "const vec4 vertices[6] ="
          "{"
          "  vec4(-1.0f, 1.0f, 0.0f, 1.0f),"

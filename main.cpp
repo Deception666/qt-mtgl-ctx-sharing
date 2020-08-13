@@ -1,13 +1,12 @@
-#include "qt-gl-view.h"
-#include "render-thread.h"
-
 #if _WIN32
-#include <QtPlatformHeaders/QWGLNativeContext>
-#endif // _WIN32
+#include "qt-gl-view.h"
+#endif
+#include "render-thread.h"
 
 #include <QtWidgets/QApplication>
 
 #include <QtGui/QOpenGLContext>
+#include <QtGui/QSurfaceFormat>
 
 #include <QtCore/QCoreApplication>
 #include <QtCore/QVariant>
@@ -28,6 +27,16 @@
 #include <vector>
 
 #include <string.h>
+
+// must be last due to X11 conflicts
+#if _WIN32
+#include <QtPlatformHeaders/QWGLNativeContext>
+#elif __linux__
+#include "qt-gl-view.h"
+#include <QtPlatformHeaders/qglxnativecontext.h>
+#else
+#error "Define for thisi platform!"
+#endif // _WIN32
 
 #define DISPLAY_ONLY_ONE_VIEW 0
 
@@ -81,6 +90,16 @@ std::any SetupHiddenGLContextFromGlobalQtGLContext( ) noexcept
                HDC { },
                qvariant_cast< QWGLNativeContext >(
                   native_handle).context()) });
+#elif __linux__
+      std::any context {
+         std::make_tuple(
+            qvariant_cast< QGLXNativeContext >(
+               native_handle).display(),
+            qvariant_cast< QGLXNativeContext >(
+               native_handle).context()) };
+
+      hidden_gl_context.swap(
+         context);
 #else
 #error "Define for your platform!"
 #endif
@@ -91,8 +110,22 @@ std::any SetupHiddenGLContextFromGlobalQtGLContext( ) noexcept
 
 int32_t main(
    const int32_t argc,
-   const char * const (& argv)[] )
+   const char * const * const argv )
 {
+   // make sure a desktop version is selected
+   // for all qt opengl windows and widgets
+   auto surface_format =
+      QSurfaceFormat::defaultFormat();
+   surface_format.setRenderableType(
+      QSurfaceFormat::RenderableType::OpenGL);
+   surface_format.setProfile(
+      QSurfaceFormat::OpenGLContextProfile::CompatibilityProfile);
+   surface_format.setVersion(
+      4, 5);
+   
+   QSurfaceFormat::setDefaultFormat(
+      surface_format);
+
    QCoreApplication::setAttribute(
       Qt::AA_ShareOpenGLContexts,
       true);
