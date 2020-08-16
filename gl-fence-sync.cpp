@@ -41,6 +41,12 @@ static void (APIENTRY *glWaitSync)(GLsync sync, GLbitfield flags, GLuint64 timeo
 static void (APIENTRY *glGetSynciv)(GLsync sync, GLenum pname, GLsizei count, GLsizei *length, GLint *values) { nullptr };
 
 #if _WIN32
+inline decltype(wglGetProcAddress(nullptr))
+GetProcAddress( const char * const function )
+{
+   return
+      wglGetProcAddress(function);
+}
 #elif __linux__
 inline decltype(glXGetProcAddress(nullptr))
 GetProcAddress( const char * const function )
