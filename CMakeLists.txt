@@ -41,10 +41,10 @@ project(
 
 set(
    CMAKE_C_FLAGS
-   "${CMAKE_CXX_FLAGS} /Zc:__cplusplus")
+   "${CMAKE_C_FLAGS} /Zc:__cplusplus /MP /D_SCL_SECURE_NO_WARNINGS")
 set(
    CMAKE_CXX_FLAGS
-   "${CMAKE_CXX_FLAGS} /Zc:__cplusplus")
+   "${CMAKE_CXX_FLAGS} /Zc:__cplusplus /MP /D_SCL_SECURE_NO_WARNINGS")
 
 try_compile(
    _has_cxx_structured_bindings
@@ -75,6 +75,11 @@ check_include_file_cxx(
 
 add_executable(
    ${proj_name}
+   color-buffer-data.h
+   gl-fence-sync.cpp
+   gl-fence-sync.h
+   gl-pixel-buffer-object.cpp
+   gl-pixel-buffer-object.h
    main.cpp
    osg-gc-wrapper.cpp
    osg-gc-wrapper.h
@@ -104,7 +109,8 @@ find_package(
    COMPONENTS
    osgDB
    osgViewer
-   osgUtil)
+   osgUtil
+   osgText)
 
 target_include_directories(
    ${proj_name}

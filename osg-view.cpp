@@ -1,4 +1,7 @@
 #include "osg-view.h"
+#include "color-buffer-data.h"
+#include "gl-pixel-buffer-object.h"
+#include "gl-fence-sync.h"
 #include "osg-gc-wrapper.h"
 
 #if _WIN32
@@ -10,12 +13,15 @@
 #include <osgUtil/SceneView>
 #include <osgUtil/UpdateVisitor>
 
+#include <osgText/Text>
+
 #include <osgDB/ReadFile>
 
 #include <osg/Camera>
 #include <osg/DisplaySettings>
 #include <osg/FrameStamp>
 #include <osg/FrameBufferObject>
+#include <osg/GLExtensions>
 #include <osg/GraphicsContext>
 #include <osg/Matrix>
 #include <osg/MatrixTransform>
@@ -34,11 +40,11 @@
 #include <cassert>
 #include <chrono>
 #include <iostream>
-#include <memory>
 #include <type_traits>
 
-#define USE_GL_FLUSH 0
-#define USE_GL_FINISH 1
+#define USE_GL_FLUSH 1
+#define USE_GL_FINISH 0
+#define SHARE_WITH_PARENT_GC_CONTEXT 0
 
 static const auto qt_meta_type_int32_t =
    qRegisterMetaType< int32_t >("int32_t");
@@ -47,6 +53,9 @@ static const auto qt_meta_type_GLuint =
 static const auto qt_meta_type_std_array_doulbe_3 =
    qRegisterMetaType< std::array< double, 3 > >(
       "std::array< double, 3 >");
+static const auto qt_meta_type_color_buffer_data_ptr =
+   qRegisterMetaType< std::shared_ptr< ColorBufferData > >(
+      "std::shared_ptr< ColorBufferData >");
 
 #if _WIN32
 static std::unique_ptr<
@@ -220,6 +229,7 @@ graphics_context_ {
 {
    assert(graphics_context_.get());
 
+#if SHARE_WITH_PARENT_GC_CONTEXT
 #if _WIN32
    const auto shared =
       wglShareLists(
@@ -231,6 +241,7 @@ graphics_context_ {
 #else
 #error "Define for this platform!"
 #endif // _WIN32
+#endif // SHARE_WITH_PARENT_GC_CONTEXT
 
    SetupOSG(model);
    SetupFrameBuffer();
@@ -285,10 +296,50 @@ void OSGView::Render( ) noexcept
                std::chrono::steady_clock::now().time_since_epoch()).count() /
             1000.0);
 
+         UpdateText(
+            color_buffer_id);
+
          osg_scene_view_->update();
          osg_scene_view_->cull();
          osg_scene_view_->draw();
+
+         const auto frame_buffer =
+            active_frame_buffers_.find(
+               color_buffer_id);
+
+         const auto * const gl_extensions =
+            graphics_context_->getState()->get< osg::GLExtensions >();
+
+         gl_extensions->glBindFramebuffer(
+            GL_FRAMEBUFFER_EXT,
+            frame_buffer->second.second->getHandle(
+               graphics_context_->getState()->getContextID()));
+
+         glReadBuffer(
+            GL_COLOR_ATTACHMENT0_EXT);
+
+         const auto & pbo =
+            frame_buffer->second.first;
+
+         pbo->Bind(
+            gl::PixelBufferObject::Operation::PACK);
          
+         glReadPixels(
+            0, 0,
+            width_, height_,
+            GL_BGRA,
+            GL_UNSIGNED_BYTE,
+            nullptr);
+         
+         gl_extensions->glBindFramebuffer(
+            GL_FRAMEBUFFER_EXT,
+            0);
+
+         glReadBuffer(
+            GL_BACK);
+
+         gl::FenceSync fence_sync;
+
 #if USE_GL_FLUSH
          glFlush();
 #endif
@@ -297,7 +348,33 @@ void OSGView::Render( ) noexcept
          glFinish();
 #endif
 
-         emit Present(color_buffer_id);
+         const auto color_buffer_data =
+            std::make_shared< ColorBufferData >();
+
+         color_buffer_data->id_ = color_buffer_id;
+         color_buffer_data->width_ = width_;
+         color_buffer_data->height_ = height_;
+
+         if (fence_sync.Valid() &&
+             !fence_sync.IsSignaled())
+         {
+            active_fence_syncs_.emplace_back(
+               color_buffer_data,
+               std::make_unique< gl::FenceSync >(
+                  std::move(fence_sync)));
+         }
+         else
+         {
+            color_buffer_data->data_ =
+               pbo->ReadData< uint32_t >(
+                  0,
+                  width_ * height_);
+
+            emit Present(color_buffer_data);
+         }
+
+         pbo->Bind(
+            gl::PixelBufferObject::Operation::NONE);
       }
 
       graphics_context_->releaseContext();
@@ -309,20 +386,21 @@ void OSGView::PostRender( ) noexcept
 }
 
 void OSGView::OnPresentComplete(
-   const GLuint color_buffer_texture_id ) noexcept
+   const std::shared_ptr< ColorBufferData > & color_buffer ) noexcept
 {
 #if _has_cxx_std_map_extract
    inactive_frame_buffers_.insert(
       active_frame_buffers_.extract(
-         color_buffer_texture_id));
+         color_buffer->id_));
 #else
    const auto active_frame_buffer =
       active_frame_buffers_.find(
-         color_buffer_texture_id);
+         color_buffer->id_);
 
-   inactive_frame_buffers_.insert({
-      active_frame_buffer->first,
-      active_frame_buffer->second});
+   inactive_frame_buffers_.insert(
+      std::make_pair(
+         active_frame_buffer->first,
+         std::move(active_frame_buffer->second)));
 
    active_frame_buffers_.erase(
       active_frame_buffer);
@@ -366,6 +444,9 @@ void OSGView::SetupOSG(
 
    mtransform->addChild(
       model_node);
+
+   mtransform->addChild(
+      new osgText::Text);
 
    osg_scene_view_->setSceneData(
       mtransform);
@@ -457,14 +538,14 @@ void OSGView::SetupFrameBuffer( ) noexcept
    const auto depth_buffer =
       SetupDepthBuffer();
 
-   for (size_t i { 0 }; i < 3; ++i)
+   for (size_t i { 0 }; i < 4; ++i)
    {
       osg::ref_ptr< osg::Texture2D > color_buffer {
          new osg::Texture2D };
 
       color_buffer->setTextureSize(width_, height_);
       color_buffer->setInternalFormat(GL_RGBA8);
-      color_buffer->setSourceFormat(GL_RGBA);
+      color_buffer->setSourceFormat(GL_BGRA);
       color_buffer->setSourceType(GL_UNSIGNED_BYTE);
       color_buffer->setWrap(
          osg::Texture::WrapParameter::WRAP_S,
@@ -503,9 +584,22 @@ void OSGView::SetupFrameBuffer( ) noexcept
          color0_attachment.getTexture()->getTextureObject(
             graphics_context_->getState()->getContextID());
       
-      inactive_frame_buffers_.emplace(
-         color_buffer_texture_object->id(),
-         frame_buffer);
+      const auto inactive_frame_buffer =
+         inactive_frame_buffers_.emplace(
+            color_buffer_texture_object->id(),
+            std::make_pair(
+               std::make_unique< gl::PixelBufferObject >(),
+               frame_buffer));
+
+      const auto & pbo =
+         inactive_frame_buffer.first->second.first;
+
+      pbo->Bind(
+         gl::PixelBufferObject::Operation::PACK);
+      pbo->SetSize(
+         width_ * height_ * sizeof(uint32_t));
+      pbo->Bind(
+         gl::PixelBufferObject::Operation::NONE);
 
       std::cout
          << "Color ID = "
@@ -525,9 +619,11 @@ void OSGView::SetupSignalsSlots( ) noexcept
       SLOT(OnResize(const int32_t, const int32_t)));
    QObject::connect(
       &parent_,
-      SIGNAL(PresentComplete(const GLuint)),
+      SIGNAL(PresentComplete(
+         const std::shared_ptr< ColorBufferData > &)),
       this,
-      SLOT(OnPresentComplete(const GLuint)));
+      SLOT(OnPresentComplete(
+         const std::shared_ptr< ColorBufferData > &)));
    QObject::connect(
       &parent_,
       SIGNAL(SetCameraLookAt(
@@ -550,9 +646,11 @@ void OSGView::ReleaseSignalsSlots( ) noexcept
       SLOT(OnResize(const int32_t, const int32_t)));
    QObject::disconnect(
       &parent_,
-      SIGNAL(PresentComplete(const GLuint)),
+      SIGNAL(PresentComplete(
+         const std::shared_ptr< ColorBufferData > &)),
       this,
-      SLOT(OnPresentComplete(const GLuint)));
+      SLOT(OnPresentComplete(
+         const std::shared_ptr< ColorBufferData > &)));
    QObject::disconnect(
       &parent_,
       SIGNAL(SetCameraLookAt(
@@ -611,9 +709,25 @@ osg::ref_ptr< osg::Texture2D > OSGView::SetupDepthBuffer( ) noexcept
    return depth_buffer;
 }
 
+void OSGView::UpdateText(
+   const GLuint color_buffer_texture_id ) const noexcept
+{
+   const auto scene_data =
+      osg_scene_view_->getSceneData();
+
+   const auto text_node =
+      scene_data->asTransform()->getChild(1);
+
+   static_cast< osgText::Text * >(
+      text_node)->setText(
+         std::to_string(color_buffer_texture_id));
+}
+
 std::pair< bool, GLuint > OSGView::SetupNextFrame( ) noexcept
 {
    std::pair< bool, GLuint > setup { false, 0 };
+
+   ProcessWaitingFenceSyncs();
 
    const auto frame_buffer =
       GetNextFrameBuffer();
@@ -701,23 +815,89 @@ OSGView::GetNextFrameBuffer( ) noexcept
    {
       const auto frame_buffer_it = inactive_frame_buffers_.cbegin();
       frame_buffer.first = frame_buffer_it->first;
-      frame_buffer.second = frame_buffer_it->second;
+      frame_buffer.second = frame_buffer_it->second.second;
+
+      const uint32_t data_size =
+         width_ * height_ * sizeof(uint32_t);
+
+      if (data_size > frame_buffer_it->second.first->GetSize())
+      {
+         const auto & pbo =
+            frame_buffer_it->second.first;
+
+         pbo->Bind(
+            gl::PixelBufferObject::Operation::PACK);
+         pbo->SetSize(
+            data_size);
+         pbo->Bind(
+            gl::PixelBufferObject::Operation::NONE);
+      }
 
 #if _has_cxx_std_map_extract
       active_frame_buffers_.insert(
          inactive_frame_buffers_.extract(
             frame_buffer_it->first));
 #else
-      active_frame_buffers_.insert({
-         frame_buffer_it->first,
-         frame_buffer_it->second});
+      const auto inactive_frame_buffer =
+         inactive_frame_buffers_.find(
+            frame_buffer_it->first);
+
+      active_frame_buffers_.insert(
+         std::make_pair(
+            inactive_frame_buffer->first,
+            std::move(inactive_frame_buffer->second)));
 
       inactive_frame_buffers_.erase(
-         frame_buffer_it);
+         inactive_frame_buffer);
 #endif
    }
 
    return frame_buffer;
+}
+
+void OSGView::ProcessWaitingFenceSyncs( ) noexcept
+{
+   auto fence_sync =
+      active_fence_syncs_.cbegin();
+
+   for (; fence_sync != active_fence_syncs_.cend(); ++fence_sync)
+   {
+      if (!fence_sync->second->IsSignaled())
+      {
+         break;
+      }
+      else
+      {
+         const auto color_buffer_data =
+            fence_sync->first;
+
+         const auto active_frame_buffer =
+            active_frame_buffers_.find(
+               color_buffer_data->id_);
+
+         const auto & pbo =
+            active_frame_buffer->second.first;
+
+         pbo->Bind(
+            gl::PixelBufferObject::Operation::PACK);
+
+         color_buffer_data->data_ =
+            pbo->ReadData< uint32_t >(
+               0,
+               color_buffer_data->width_ *
+               color_buffer_data->height_);
+
+         pbo->Bind(
+            gl::PixelBufferObject::Operation::NONE);
+
+         emit
+            Present(fence_sync->first);
+      }
+   }
+
+   active_fence_syncs_.erase(
+      active_fence_syncs_.cbegin(),
+      fence_sync);
 }
 
 void OSGView::OnResize(

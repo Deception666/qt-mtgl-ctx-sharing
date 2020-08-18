@@ -15,7 +15,7 @@
 
 #include <string.h>
 
-#define EXECUTE_ONE_OSG_VIEW 1
+#define DISPLAY_ONLY_ONE_VIEW 1
 
 auto GetCommandLineArgs(
    const int32_t argc,
@@ -66,7 +66,7 @@ int32_t main(
    std::vector<
       std::unique_ptr< QtGLView > > gl_views;
 
-#if !EXECUTE_ONE_OSG_VIEW
+#if !DISPLAY_ONLY_ONE_VIEW
    for (size_t i { 0 }; i < 2; ++i)
    {
 #endif
@@ -79,7 +79,7 @@ int32_t main(
          { 0.0, 0.0, 0.0 },
          { 0.0, 0.0, 1.0 });
 
-#if !EXECUTE_ONE_OSG_VIEW
+#if !DISPLAY_ONLY_ONE_VIEW
       gl_views.emplace_back(
          std::make_unique< QtGLView >(
             "ElectEng.IVE", nullptr));
