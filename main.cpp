@@ -83,13 +83,15 @@ std::any SetupHiddenGLContextFromGlobalQtGLContext( ) noexcept
          qt_gl_context->nativeHandle();
 
 #if _WIN32
+      std::any context {
+         std::make_tuple(
+            HWND { },
+            HDC { },
+            qvariant_cast< QWGLNativeContext >(
+               native_handle).context()) };
+
       hidden_gl_context.swap(
-         std::any {
-            std::make_tuple(
-               HWND { },
-               HDC { },
-               qvariant_cast< QWGLNativeContext >(
-                  native_handle).context()) });
+         context);
 #elif __linux__
       std::any context {
          std::make_tuple(

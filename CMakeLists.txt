@@ -43,10 +43,10 @@ project(
 if (WIN32)
    set(
       CMAKE_C_FLAGS
-      "${CMAKE_CXX_FLAGS} /Zc:__cplusplus /MP")
+      "${CMAKE_CXX_FLAGS} /Zc:__cplusplus /permissive- /MP")
    set(
       CMAKE_CXX_FLAGS
-      "${CMAKE_CXX_FLAGS} /Zc:__cplusplus /MP")
+      "${CMAKE_CXX_FLAGS} /Zc:__cplusplus /permissive- /MP")
 endif ( )
 
 try_compile(
