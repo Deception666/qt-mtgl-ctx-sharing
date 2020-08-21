@@ -184,7 +184,7 @@ CreateGraphicsContext(
 #if _WIN32
    gc_traits->windowingSystemPreference = "Win32";
 #elif __linux__
-#error "Define for this platform!"
+   gc_traits->windowingSystemPreference = "X11";
 #else
 #error "Define for this platform!"
 #endif
